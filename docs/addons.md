@@ -18,20 +18,39 @@ metadata:
 
 ## Profiles
 
-| File | Poduces |
+| File | Produces |
 |---|---|
-| `addons/clusterprofile-cilium.yaml` | Cilium 1.18.4 (`ipam.mode=kubernetes`, `kubeProxyReplacement=false`) |
-| `addons/clusterprofile-hcloud-ccm.yaml` | hcloud CCM 1.38.0, `dependsOn: [cilium]` |
+| `addons/clusterprofile-cilium.yaml` | Cilium 1.20.2 — **CNI only** (`ipam.mode=kubernetes`, `kubeProxyReplacement=false`); kube-proxy handles services |
+| `addons/clusterprofile-hcloud-ccm.yaml` | hcloud CCM 1.38.0 |
 
-`dependsOn` guarantees Cilium is deployed before the CCM, so nodes can become
-`Ready` first.
+There is deliberately **no** `dependsOn` between them: making `hcloud-ccm` depend
+on `cilium` caused a Sveltos delete/recreate deadlock ("still depends on this
+profile"). The CCM simply waits for the CNI before its pod can start.
 
 ## Credentials
 
-The hcloud CCM needs a `hcloud-credentials` Secret (and `hcloud-ccm-config`
-ConfigMap) in the workload's `kube-system`. These are carried by a ConfigMap
-`hcloud-ccm-addon` in the hub, whose data entries are the manifests to copy.
-Sveltos `policyRefs` copies it into matching clusters.
+The hcloud CCM chart reads the token from a Secret named **`hcloud`**, key
+**`token`**, in the workload's `kube-system` (that is the chart's default env
+mapping — there is no `secretName`/`secretKeyName` value). A ConfigMap
+`hcloud-ccm-addon` in the hub carries the Secret manifest; Sveltos `policyRefs`
+copies it into matching clusters.
+
+## Bootstrap order (cloud-provider=external)
+
+With `--cloud-provider=external`, kubelet registers the Node **without addresses**
+until the CCM runs — and the CCM needs the CNI. Cilium-as-CNI (with kube-proxy and
+`kubeProxyReplacement: false`) comes up on its own: it uses the default-route
+device, so **no device pinning and no `k8sServiceHost` are needed**. That breaks
+the deadlock cleanly:
+
+```
+Cilium => Node Ready => CCM sets providerID => uninitialized taint cleared => CoreDNS schedules
+```
+
+Earlier experiments pinned the Cilium device and used kube-proxy *replacement*;
+those hit Cilium 1.20's "unable to determine direct routing device" and the
+invalid `bpf.masquerade` + `egressMasqueradeInterfaces` combination. Using
+kube-proxy for service load-balancing avoids all of that.
 
 The ConfigMap is **rendered at bootstrap** from `$HCLOUD_TOKEN`
 (`scripts/08-apply-addons.sh`) — the token is never committed to git. See

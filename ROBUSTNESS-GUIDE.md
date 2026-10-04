@@ -200,7 +200,7 @@ cilium:
 	  --set ipam.mode=kubernetes --set kubeProxyReplacement=false
 
 ccm:
-	# hcloud-credentials Secret + ConfigMap + helm install hccm ...
+	# hcloud Secret "hcloud" (key token) + Sveltos ClusterProfile/hccm (see docs/addons.md) ...
 
 verify:
 	kubectl get nodes -o wide
