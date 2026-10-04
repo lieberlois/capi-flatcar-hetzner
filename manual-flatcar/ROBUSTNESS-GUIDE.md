@@ -53,7 +53,7 @@ rm /tmp/hcloud-token
 
 ## B. Versionen: eine Quelle, keine Duplikate
 
-Derzeit ist `v1.36.3` **sechsfach** verteilt: `spec.version` (KCP + MD), die drei `wget`-URLs in beiden Bootstrap-Configs, und `kubeadm config images pull --kubernetes-version`. Die drei Unit-Files (kubelet, 10-kubeadm.conf) sind zwischen CP und Worker zusätzlich komplett Copy-Paste. Das driftet garantiert.
+Derzeit ist `v1.36.4` **mehrfach** verteilt: `spec.version` (KCP + MD) und je drei Stellen im `ignition.containerLinuxConfig.additionalConfig` (Link-Target, `.raw`-Pfad, `.raw`-URL) sowie die Sysupdate-Conf beider Bootstrap-Configs. CP und Worker duplizieren den kompletten Block. Das driftet garantiert.
 
 ### B.1 (Empfohlen) ClusterClass + Topology
 Kosten: einmalig Umbau. Nutzen: Node-Templates und Bootstrap-Daten **einmal** definieren, CP und Worker dort ableiten; Version/Image zentral als Parameter.
@@ -78,12 +78,12 @@ sed "s|__K8S_VERSION__|$K8S_VERSION|g" templates/control-plane.yaml.in > manifes
 ```
 Wichtig: dann sind die `.yaml`-Dateien Build-Artefakte — im Repo entweder die Quellen **oder** die Artefakte + CI-Validierung (Dateien nicht von Hand editieren).
 
-### B.3 Binaries boot-fest machen
-Heute holt jeder Node kubeadm/kubelet/kubectl per `wget` aus `dl.k8s.io` — Cluster-Aufbau hängt an der Verfügbarkeit des CDN.
+### B.3 Kubernetes-Binaries: sysext statt Baking
+Heute liefert die upstream **sysext-bakery** `kubernetes-v1.36.4-x86-64.raw` die Binaries (kubelet/kubeadm/kubectl + CNI-Plugins). Ignition lädt die `.raw` beim Provisioning; `systemd-sysext` merged sie nach `/usr`. Der Cluster-Aufbau hängt damit an `extensions.flatcar.org`.
 
-**Option 1 (sofort, billig):** SHA-256-Checksummen pinning. Cluster-API ignoriert das Format von `files:` beim Ignition-Rendering nicht — ob `verification`/`contentHash` im CAPBK-Ignition-Format unterstützt wird, **verifizieren** (siehe CAPBK-Doku `format: ignition`). Falls nicht: `wget` + `sha256sum -c` in `preKubeadmCommands` vorschalten.
+**Option 1 (sofort, billig):** Version pinnen (aktuell `v1.36.4`) und die Sysupdate-Conf aus der Bakery nutzen (`systemd-sysupdate.timer`), damit Patchlevel innerhalb derselben Minor-Version automatisch nachgezogen werden. Die Sysupdate-Conf hat upstream `Verify=false` — für Produktion eigene Verifikation/Signaturen einplanen.
 
-**Option 2 (besser, langfristig):** kubeadm/kubelet/kubectl in den **Packer-Snapshot** baken (Dateien aufs Image legen, `/opt/bin` persistent). Nodes brauchen dann kein Internet zum Booten; Versionswechsel = neuer Snapshot + `HCloudMachineTemplate` (immutable → löschen+neu).
+**Option 2 (besser, langfristig):** `.raw` in einen internen Mirror/Registry spiegeln (Harbor/OCI) und signieren; Nodes beziehen dann aus dem eigenen Mirror statt direkt von GitHub/flatcar.org.
 
 ---
 
@@ -250,7 +250,7 @@ Pre-commit Hook (optional): `pre-commit install` mit gitleaks + yamllint + kubec
 
 - [ ] `.ssh/`-Key separat pro Node-Pool prüfen; Token-Handling aus Shell-History raus (A)
 - [ ] `flatcar.pkr.hcl`: Label aus `var.channel`; Release pinnen; Doku §3.2/§4.2 nachziehen (C, B)
-- [ ] Bootstrap-Configs: Checksummen / Binaries in Snapshot; Versionen zentralisieren oder ClusterClass (B)
+- [ ] Bootstrap-Configs: Version pinnen + Sysupdate nutzen (statt Snapshot-Baking); Versionen zentralisieren oder ClusterClass (B)
 - [ ] MachineDeployment: `selector.matchLabels` + `replicas: 3`; MachineHealthCheck (D)
 - [ ] `.gitignore` erweitern; README-Platzhalter bereinigen (D)
 - [ ] OS-Update-Strategie entscheiden + kured (oder Mask) implementiert (E)

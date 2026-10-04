@@ -6,7 +6,7 @@
 > dem **Cluster API Provider Hetzner** (CAPH) und **Ignition**-Bootstrap.
 >
 > Jede Zeile hier wurde in dieser Session real ausgeführt und verifiziert.
-> Zielkonfiguration: 1 Control-Plane + 3 Worker (cpx22), Kubernetes **v1.36.3**,
+> Zielkonfiguration: 1 Control-Plane + 3 Worker (cpx22), Kubernetes **v1.36.4**,
 > Flatcar **4593.2.5 stable**, CNI Cilium.
 
 ---
@@ -26,6 +26,12 @@
     ├─ Control-Plane Node: cpx22, Flatcar 4593.2.5 stable
     └─ Worker Nodes (3x):  cpx22, Flatcar 4593.2.5 stable
 ```
+
+> **Kubernetes-Binaries:** nicht mehr im Snapshot, sondern als offizielle
+> `kubernetes-v1.36.4-x86-64.raw` aus der
+> [sysext-bakery](https://github.com/flatcar/sysext-bakery). Ignition lädt sie
+> beim Provisioning nach `/opt/extensions/` und verlinkt
+> `/etc/extensions/kubernetes.raw`; `systemd-sysext` merged sie nach `/usr`.
 
 **Glossar**
 - **CAPI**  = Cluster API (Kubernetes SIG)
@@ -92,8 +98,10 @@ ssh-keygen -t ed25519 -N "" -f .ssh/hetzner-flatcar-key -C capi-management-hetzn
 hcloud ssh-key create --name hetzner-flatcar-key \
   --public-key-from-file .ssh/hetzner-flatcar-key.pub
 
-# 3) Flatcar-Snapshot bauen (NUR x86 — ARM/cax11 ist nicht in fsn1 verfügbar):
-packer init .        # im Repo-Root (flatcar.pkr.hcl)
+# 3) Vanilla-Flatcar-Snapshot bauen (NUR x86 — ARM/cax11 ist nicht in fsn1 verfügbar):
+#    Der Snapshot enthält KEINE Kubernetes-Binaries/Units; diese kommen beim
+#    Provisioning per Ignition aus der upstream sysext-bakery (siehe §1/§3.3).
+packer init .        # im Verzeichnis manual-flatcar/ (flatcar.pkr.hcl)
 packer build .
 # → Snapshot "flatcar-stable-x86", Flatcar 4593.2.5 stable
 
@@ -146,7 +154,7 @@ helm install cilium cilium/cilium --version 1.18.4 --namespace kube-system \
   --set ipam.mode=kubernetes --set kubeProxyReplacement=false
 
 # hcloud Cloud Controller Manager (setzt Instanz-Labels; kubelet läuft
-# bereits mit --cloud-provider=external aus dem Ignition-Setup):
+# bereits mit cloud-provider=external aus kubeletExtraArgs):
 helm repo add hcloud https://charts.hetzner.cloud
 kubectl -n kube-system create secret generic hcloud-credentials \
   --from-literal=hcloud-token="$HCLOUD_TOKEN"
@@ -191,8 +199,10 @@ pflegen und `kubectl apply -f manifests/` ausführen — KCP macht den Rest
    alte Machines löschen, damit KCP/MD sie neu bauen.
 4. **SSH-Key `users:` Block** — Hetzner injiziert bei Custom-Snapshots keine Keys in
    Flatcar. Ohne `users.sshAuthorizedKeys` im `kubeadmConfigSpec` ist kein SSH-Debug.
-5. **kubelet `--cloud-provider=external`** im Kubelet-Systemd-Drop-In (`10-kubeadm.conf`)
-   setzen, damit der hcloud-CCM providerID + Labels übernehmen kann.
+5. **kubelet `cloud-provider=external`** nativ über `kubeletExtraArgs:` (v1beta2 →
+   `name`/`value`-Liste) setzen, damit der hcloud-CCM providerID + Labels
+   übernehmen kann. kubeadm schreibt das nach `/var/lib/kubelet/kubeadm-flags.env`,
+   das die upstream `10-kubeadm.conf` der Sysext bereits einliest.
 6. **Cilium**: `kubeProxyReplacement` muss explizit `false` sein, sonst scheitert die
    Helm-Inst-Validation an der ConfigMap.
 7. **API-Gruppen**: Cluster/KCP/MD → `v1beta2`; CAPH → `v1beta1`.
@@ -233,10 +243,10 @@ pflegen und `kubectl apply -f manifests/` ausführen — KCP macht den Rest
 | Cluster CR | ✔ Provisioned, init=True | |
 | Control-Plane | Neubau | `hetzner-control-plane-b44mg` (Server läuft) |
 | Worker (3x) | Neubau | `hetzner-worker-md-xr7sf-*` (Server laufen) |
-| Kubernetes | **v1.36.3** | |
+| Kubernetes | **v1.36.4** | upstream `kubernetes-v1.36.4-x86-64.raw` (sysext-bakery) |
 | CNI | ✔ Cilium 1.18.4 | neu installiert nach Neubau (helm, Abschnitt 3.4) |
 | CCM | ✔ hcloud-cloud-controller-manager | installiert; setzt providerID + Labels (kubelet läuft mit `--cloud-provider=external`) |
-| Nodes | ✔ alle Ready | 1 CP + 3 Worker, v1.36.3 |
+| Nodes | ✔ alle Ready | 1 CP + 3 Worker, v1.36.4 |
 | Kubeconfig | ✔ `hetzner-cluster.kubeconfig` | im Repo-Root, gitignored |
 
 > Nach einem vollständigen Cluster-Neubau (Löschen aller CAPI-Objekte) müssen
@@ -269,8 +279,10 @@ das unkontrollierte Rebooten unerwünscht. Zwei saubere Optionen:
 - **kured** (DaemonSet im Workload-Cluster, CNCF Sandbox) überwacht den
   Reboot-Sentinel, nimmt einen **cluster-weiten Lock** (nur 1 Node rebootet
   gleichzeitig), **cordons + drains** den Node, rebootet und uncordont danach.
-- Unsere kubelet-/systemd-Units und `/opt/bin`-Binaries sind auf persistenten
-  Partitionen → Node kommt nach dem Reboot sauber in den Cluster zurück.
+- Die Kubernetes-Binaries liegen in der upstream sysext-bakery-Erweiterung
+  (`/opt/extensions/kubernetes/…raw`, per Ignition geladen) und werden von
+  Flatcars `systemd-sysext` nach `/usr` gemerged → Node kommt nach dem Reboot
+  sauber in den Cluster zurück.
 - Einrichtung: `helm install kured kubereboot/kured` (bzw. Helm-Repo) mit
   `--set` auf Sentinel, Fenster (`--start-time/--end-time`), und Control-Plane-
   Tolerations.
