@@ -41,8 +41,8 @@ geladen und von Flatcars `systemd-sysext` nach `/usr` gemerged.
 3. kubeadm startet mit nativen `kubeletExtraArgs:` (v1beta2-Liste):
    `cloud-provider=external`, `resolv-conf=/etc/kubernetes/resolv.conf`.
 
-Kein `/opt/bin`, keine manuellen `kubelet.service`-Drop-Ins, keine
-`preKubeadmCommands`.
+Kein `/opt/bin`, keine manuellen `kubelet.service`-Drop-Ins und keine
+imperativen Bootstrap-Kommandos — alles deklarativ via Ignition.
 
 ## Quickstart (Zusammenfassung)
 

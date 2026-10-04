@@ -309,6 +309,6 @@ das unkontrollierte Rebooten unerwünscht. Zwei saubere Optionen:
   installiert werden.
 - OS-Version-Drift: kured aktualisiert die **OS-Patch-Level** in-place. Die
   **Kubernetes-Version** bleibt davon unabhängig über die Manifeste
-  (Binaries pinning in `preKubeadmCommands` + `spec.version`) gesteuert.
+  (Sysext-Version in der Ignition-Config + `spec.version`) gesteuert.
 - Für **Major-OS-Upgrades** (z. B. Flatcar-Channel-/Milestone-Wechsel) ist
   weiterhin Option B (Snapshot + CAPI-Rolling) der saubere Weg.

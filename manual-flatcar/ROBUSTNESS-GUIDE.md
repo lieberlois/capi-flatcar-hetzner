@@ -183,7 +183,7 @@ Ignition um Systemd-Mask erweitern (in beiden Bootstrap-Configs):
       owner: root:root
       path: /etc/flatcar/update.conf        # update-engine pausieren
       permissions: "0644"
-    # zusätzlich: systemctl mask locksmithd (Reboot-Service) via preKubeadmCommands
+    # zusätzlich: locksmithd.service per Ignition maskieren (systemd.units: mask: true)
 ```
 Plus: OS-Rollover ausschließlich über neuen Snapshot + CAPI-Rolling (deterministisch, manuell).
 
