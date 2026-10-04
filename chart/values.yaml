@@ -15,32 +15,32 @@ sshAuthorizedKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgPVuRlet/qJl4KsKBI26n4l
 # controlPlane.allowScheduling: true removes the control-plane NoSchedule taint
 # (for single-node clusters that must run workloads).
 clusters:
-  hetzner-cluster:
-    namespace: default
-    region: fsn1
-    sshKeyName: hetzner-flatcar-key
-    addons: true # label addons=enabled -> Sveltos installs Cilium + hcloud-CCM
-    podsCidr: 10.244.0.0/16
-    servicesCidr: 10.245.0.0/16
-    network:
-      enabled: true
-      cidrBlock: 10.0.0.0/16
-      subnetCidrBlock: 10.0.0.0/24
-    # Optional cluster-wide default; can be overridden per role below.
-    kubernetesVersion: v1.36.5
-    controlPlane:
-      kubernetesVersion: v1.36.5
-      replicas: 1
-      machineType: cpx22
-      imageName: flatcar-stable-x86
-    workers:
-      kubernetesVersion: v1.36.5
-      replicas: 1
-      failureDomain: fsn1
-      machineType: cpx22
-      imageName: flatcar-stable-x86
+  # --- 2-node cluster: disabled to save cost, re-enable when needed ----------
+  # hetzner-cluster:
+  #   namespace: default
+  #   region: fsn1
+  #   sshKeyName: hetzner-flatcar-key
+  #   addons: true
+  #   podsCidr: 10.244.0.0/16
+  #   servicesCidr: 10.245.0.0/16
+  #   network:
+  #     enabled: true
+  #     cidrBlock: 10.0.0.0/16
+  #     subnetCidrBlock: 10.0.0.0/24
+  #   kubernetesVersion: v1.36.5
+  #   controlPlane:
+  #     kubernetesVersion: v1.36.5
+  #     replicas: 1
+  #     machineType: cpx22
+  #     imageName: flatcar-stable-x86
+  #   workers:
+  #     kubernetesVersion: v1.36.5
+  #     replicas: 1
+  #     failureDomain: fsn1
+  #     machineType: cpx22
+  #     imageName: flatcar-stable-x86
 
-  # Second cluster: control-plane only, single node, in its own namespace.
+  # --- single-node cluster (control plane only) ------------------------------
   test-single-node:
     namespace: test-single-node
     region: fsn1
