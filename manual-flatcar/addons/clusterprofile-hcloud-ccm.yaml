@@ -1,0 +1,30 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: hcloud-ccm
+spec:
+  clusterSelector:
+    matchLabels:
+      addons: enabled
+  # Deploy the CCM only after Cilium, so nodes can become Ready first.
+  dependsOn:
+  - cilium
+  syncMode: Continuous
+  # Distributes the hcloud credentials Secret + ConfigMap (rendered into the
+  # ConfigMap "hcloud-ccm-addon" by scripts/08-apply-addons.sh; token never in git).
+  policyRefs:
+  - kind: ConfigMap
+    name: hcloud-ccm-addon
+    namespace: default
+  helmCharts:
+  - repositoryURL: https://charts.hetzner.cloud
+    repositoryName: hcloud
+    chartName: hcloud-cloud-controller-manager
+    chartVersion: 1.38.0
+    releaseName: hccm
+    releaseNamespace: kube-system
+    helmChartAction: Install
+    values: |
+      secretName: hcloud-credentials
+      secretKeyName: hcloud-token
+      cloudConfigName: hcloud-ccm-config

@@ -24,8 +24,10 @@ geladen und von Flatcars `systemd-sysext` nach `/usr` gemerged.
 | `IMPLEMENTATION-PLAN.md` | Ende-zu-Ende Setup-Guide (Phasen 3.1–3.5, Fallstricke, Troubleshooting, kured-Outlook) |
 | `ROBUSTNESS-GUIDE.md`    | Fahrplan für einen robusten Long-Lived-Cluster |
 | `manifests/`             | Statische CAPI/CAPH/YAML-Manifeste (v1.36.4) |
+| `addons/`                | Sveltos `ClusterProfile`s (Cilium, hcloud-CCM) + Credential-Template |
 | `flatcar.pkr.hcl`        | Packer-Template: **vanilla** Flatcar-Snapshot für Hetzner (x86, stable), Label `caph-image-name=flatcar-stable-x86` |
-| `scripts/`               | Idempotente Setup-Scripts (kind, clusterctl, Snapshot, apply, Cilium, CCM) |
+| `scripts/`               | Idempotente Setup-Scripts (kind, clusterctl, Snapshot, apply, Sveltos) |
+| `../docs/`               | Architektur, Bootstrap-Schritte, Addon-Doku |
 
 ## Wie Kubernetes auf die Nodes kommt
 
@@ -53,8 +55,10 @@ Alle Details inkl. Fallstricke stehen in `IMPLEMENTATION-PLAN.md`. Kurzfassung:
 3. `scripts/02-init-ssh.sh` — Hetzner-SSH-Key hochladen.
 4. `scripts/03-init-snapshot.sh` — Packer-Snapshot bauen + labeln.
 5. `scripts/04-create-secret.sh` + `scripts/05-apply.sh`.
-6. `scripts/06-get-creds.sh`, dann `scripts/07-install-cilium.sh` und
-   `scripts/08-install-ccm.sh`.
+6. `scripts/06-get-creds.sh`.
+7. Addons: `scripts/07-install-sveltos.sh` (Hub) und `scripts/08-apply-addons.sh` —
+   Sveltos deployt Cilium + hcloud-CCM automatisch in alle Cluster mit Label
+   `addons: enabled`.
 
 ## Sensible Dateien
 

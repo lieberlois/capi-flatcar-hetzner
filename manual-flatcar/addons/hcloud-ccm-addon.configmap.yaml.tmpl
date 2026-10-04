@@ -1,0 +1,30 @@
+# Template — rendered by manual-flatcar/scripts/08-apply-addons.sh.
+# __HCLOUD_TOKEN_B64__ is replaced with the base64-encoded value of $HCLOUD_TOKEN.
+# The rendered ConfigMap lives in the HUB; Sveltos copies its data (the Secret +
+# ConfigMap manifests below) into each matching workload cluster.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hcloud-ccm-addon
+  namespace: default
+data:
+  credentials.yaml: |
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: hcloud-credentials
+      namespace: kube-system
+    type: Opaque
+    data:
+      hcloud-token: __HCLOUD_TOKEN_B64__
+  config.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: hcloud-ccm-config
+      namespace: kube-system
+    data:
+      cloud-config: |
+        token-location: /etc/hcloud/token
+        network: hetzner-cluster
+        private-network-only: false

@@ -1,0 +1,22 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: cilium
+spec:
+  # Matches any CAPI Cluster carrying this label (see manual-flatcar/manifests/cluster.yaml).
+  clusterSelector:
+    matchLabels:
+      addons: enabled
+  syncMode: Continuous
+  helmCharts:
+  - repositoryURL: https://helm.cilium.io/
+    repositoryName: cilium
+    chartName: cilium/cilium
+    chartVersion: 1.18.4
+    releaseName: cilium
+    releaseNamespace: kube-system
+    helmChartAction: Install
+    values: |
+      ipam:
+        mode: kubernetes
+      kubeProxyReplacement: false
