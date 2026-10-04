@@ -3,6 +3,8 @@ kind: Cluster
 metadata:
   name: hetzner-cluster
   namespace: default
+  labels:
+    addons: enabled
 spec:
   clusterNetwork:
     pods:
