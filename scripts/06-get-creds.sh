@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 06 — Workload-Kubeconfig exportieren (gitignored).
+# 06 — Export the workload kubeconfig (gitignored).
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$REPO_ROOT/hetzner-cluster.kubeconfig"
 
 clusterctl get kubeconfig hetzner-cluster > "$OUT"
-echo "Kubeconfig gespeichert: $OUT"
+echo "Kubeconfig written: $OUT"

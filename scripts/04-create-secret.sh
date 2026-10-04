@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 04 — CAPH-Hetzner-Secret im default-Namespace anlegen.
+# 04 — Create the CAPH Hetzner Secret in the default namespace.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${HCLOUD_TOKEN:?HCLOUD_TOKEN setzen (.env)}"
+: "${HCLOUD_TOKEN:?set HCLOUD_TOKEN (.env)}"
 
 kubectl create secret generic hcloud -n default \
   --from-literal=hcloud="$HCLOUD_TOKEN" \

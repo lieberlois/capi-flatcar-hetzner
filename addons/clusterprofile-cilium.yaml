@@ -3,7 +3,7 @@ kind: ClusterProfile
 metadata:
   name: cilium
 spec:
-  # Matches any CAPI Cluster carrying this label (see manifests/cluster.yaml).
+  # Matches any CAPI Cluster carrying this label (see chart/values.yaml).
   clusterSelector:
     matchLabels:
       addons: enabled

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 01 — Management-Cluster (kind) + CAPI/CAPH initialisieren.
+# 01 — Create the kind management cluster and initialise CAPI/CAPH.
 set -euo pipefail
 
-# ZWINGEND vor kind create UND clusterctl init (sonst kein Ignition-Bootstrap).
+# MUST be set before kind create AND clusterctl init (otherwise no Ignition bootstrap).
 export EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION=true
 
 kind create cluster --name capi-management --wait 5m

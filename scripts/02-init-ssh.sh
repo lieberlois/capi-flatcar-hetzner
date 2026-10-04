@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 02 — Projektlokales SSH-Keypair erzeugen und nach Hetzner hochladen.
+# 02 — Create a project-local SSH key pair and upload it to Hetzner.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-: "${HCLOUD_TOKEN:?HCLOUD_TOKEN setzen (.env)}"
+: "${HCLOUD_TOKEN:?set HCLOUD_TOKEN (.env)}"
 
 KEY="${1:-.ssh/hetzner-flatcar-key}"
 if [ ! -f "$KEY" ]; then

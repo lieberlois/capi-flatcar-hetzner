@@ -7,7 +7,7 @@
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ADDONS="$REPO_ROOT/addons"
-: "${HCLOUD_TOKEN:?HCLOUD_TOKEN setzen (.env)}"
+: "${HCLOUD_TOKEN:?set HCLOUD_TOKEN (.env)}"
 
 TOKEN_B64="$(printf '%s' "$HCLOUD_TOKEN" | base64 | tr -d '\n')"
 sed "s|__HCLOUD_TOKEN_B64__|${TOKEN_B64}|" \
