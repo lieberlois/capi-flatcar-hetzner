@@ -5,7 +5,7 @@ metadata:
   namespace: default
 spec:
   replicas: 1
-  version: v1.36.3
+  version: v1.36.4
   machineTemplate:
     spec:
       infrastructureRef:
@@ -33,41 +33,61 @@ spec:
       owner: root:root
       path: /etc/kubernetes/resolv.conf
       permissions: "0644"
-    - content: |
-        [Unit]
-        Description=kubelet: The Kubernetes Node Agent
-        Documentation=https://kubernetes.io/docs/home/
-        Wants=network-online.target
-        After=network-online.target
-
-        [Service]
-        ExecStart=/opt/bin/kubelet
-        Restart=always
-        StartLimitInterval=0
-        RestartSec=10
-
-        [Install]
-        WantedBy=multi-user.target
-      owner: root:root
-      path: /etc/systemd/system/kubelet.service
-      permissions: "0644"
-    - content: |
-        [Service]
-        Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
-        Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
-        Environment="KUBELET_EXTRA_ARGS=--cloud-provider=external --container-runtime-endpoint=unix:///run/containerd/containerd.sock --resolv-conf=/etc/kubernetes/resolv.conf"
-        ExecStart=
-        ExecStart=/opt/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_EXTRA_ARGS
-      owner: root:root
-      path: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
-      permissions: "0644"
+    ignition:
+      containerLinuxConfig:
+        additionalConfig: |
+          storage:
+            links:
+            - path: /etc/extensions/kubernetes.raw
+              hard: false
+              target: /opt/extensions/kubernetes/kubernetes-v1.36.4-x86-64.raw
+            files:
+            - path: /etc/sysupdate.kubernetes.d/kubernetes-v1.36.conf
+              mode: 0644
+              contents:
+                remote:
+                  url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-v1.36.conf
+            - path: /etc/sysupdate.d/noop.conf
+              mode: 0644
+              contents:
+                remote:
+                  url: https://extensions.flatcar.org/extensions/noop.conf
+            - path: /opt/extensions/kubernetes/kubernetes-v1.36.4-x86-64.raw
+              contents:
+                remote:
+                  url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-v1.36.4-x86-64.raw
+          systemd:
+            units:
+            - name: systemd-sysupdate.service
+              dropins:
+              - name: kubernetes.conf
+                contents: |
+                  [Service]
+                  ExecStartPre=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes"
+                  ExecStartPre=/usr/lib/systemd/systemd-sysupdate -C kubernetes update
+                  ExecStartPost=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes-new"
+                  ExecStartPost=/usr/bin/sh -c "if ! cmp --silent /tmp/kubernetes /tmp/kubernetes-new; then touch /run/reboot-required; fi"
+            - name: systemd-sysupdate.timer
+              enabled: false
+            - name: kubeadm.service
+              dropins:
+              - name: 10-flatcar.conf
+                contents: |
+                  [Unit]
+                  After=containerd.service
     initConfiguration:
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
+        kubeletExtraArgs:
+        - name: cloud-provider
+          value: external
+        - name: resolv-conf
+          value: /etc/kubernetes/resolv.conf
     joinConfiguration:
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
-    preKubeadmCommands:
-    - export PATH=$PATH:/opt/bin
-    - systemctl enable --now containerd
-    - kubeadm config images pull
+        kubeletExtraArgs:
+        - name: cloud-provider
+          value: external
+        - name: resolv-conf
+          value: /etc/kubernetes/resolv.conf
