@@ -38,6 +38,34 @@ Follow-ups:
 
 See `IMPLEMENTATION-PLAN.md` §8 for the current (reprovision-only) strategy.
 
+## Hosted control planes (HCP)
+
+The single-node etcd fragility above largely disappears with **hosted control
+planes**: the control plane (apiserver / etcd / scheduler / controller-manager)
+runs as pods in a **hosting** cluster, and workload clusters contain only
+**workers**.
+
+This is a strong fit for this repo's node model:
+
+- No etcd on the nodes → no stacked-etcd upgrade/data-loss concern.
+- Workers are pure and disposable → the **reprovision-only** + Flatcar **sysext**
+  bootstrap is exactly the right shape (upgrade = roll a new worker).
+- The control plane is upgraded independently of the workers, and single-node
+  workload clusters become trivial (one worker, no control plane on it).
+
+Sketch of the change:
+
+- Replace the `KubeadmControlPlane` half of `chart/` with an HCP provider —
+  e.g. **Kamaji** (kubeadm-based) or **k0smotron** (k0s-based), both CAPI-compatible.
+- Keep the worker side **unchanged**: `MachineDeployment` + `KubeadmConfigTemplate`
+  + Flatcar Ignition/sysext, plus the **Sveltos** ClusterProfiles (Cilium/CCM).
+- The hosting cluster becomes the HA-critical component (back it up; run it in the
+  management cluster).
+
+Note: the `cloud-provider=external` + CCM providerID bootstrap still applies, but
+with HCP the CCM can often run **control-plane-side** rather than as a pod on a
+CNI-less worker — which may remove the chicken-and-egg we hit here.
+
 ## Other
 
 - **ClusterClass / managed topologies** (CAPH ships a ClusterClass) for
