@@ -21,10 +21,11 @@ spec:
         mode: kubernetes
       # With --cloud-provider=external the Node has no address until the CCM
       # runs (and the CCM needs the CNI) -> Cilium cannot auto-detect a device.
-      # Pin it to the Hetzner private-network interface to break the deadlock.
+      # Pin it to eth0: that NIC holds the default route, so pod egress (and the
+      # CCM's Hetzner API calls) actually reach the internet.
       devices:
-      - eth1
-      directRoutingDevice: eth1
+      - eth0
+      directRoutingDevice: eth0
       # Replace kube-proxy entirely (kubeadm skips the addon/kube-proxy phase).
       kubeProxyReplacement: true
       # Cilium needs the API endpoint before kube-proxy exists; take it from CAPI.
