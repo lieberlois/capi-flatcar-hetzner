@@ -7,7 +7,7 @@
 >
 > Jede Zeile hier wurde in dieser Session real ausgeführt und verifiziert.
 > Zielkonfiguration: 1 Control-Plane + 3 Worker (cpx22), Kubernetes **v1.36.4**,
-> Flatcar **4593.2.5 stable**, CNI Cilium.
+> Flatcar **4757.2.1 stable**, CNI Cilium (via Sveltos).
 
 ---
 
@@ -141,41 +141,30 @@ manifests/
 └── worker-deployment.yaml       # KubeadmConfigTemplate + MachineDeployment (3 Replicas)
 ```
 
-### 3.4 Warten + CNI + CCM
+### 3.4 Addons: Sveltos (Cilium + hcloud-CCM)
+
+CNI und CCM werden **deklarativ** von **Sveltos** im Hub-Cluster auf alle
+Workload-Cluster mit Label `addons: enabled` verteilt — kein manuelles
+`helm install` in den Workload-Cluster. Details: `docs/addons.md`.
 
 ```bash
-# Kubeconfig exportieren (in Repo, gitignored):
+# Sveltos im Hub installieren (Mode 2, kein Agent im Workload):
+bash scripts/07-install-sveltos.sh
+
+# Credentials-ConfigMap (aus .env) rendern + ClusterProfiles applien:
+bash scripts/08-apply-addons.sh
+
+# Status:
+kubectl get clusterprofiles,sveltoscluster,clustersummary -A
+sveltosctl show addons            # optional
+
+# Workload prüfen:
 clusterctl get kubeconfig hetzner-cluster > hetzner-cluster.kubeconfig
-export KUBECONFIG=$PWD/hetzner-cluster.kubeconfig
-
-# Cilium (CNI) — kubeProxyReplacement MUSS false sein:
-helm repo add cilium https://helm.cilium.io
-helm install cilium cilium/cilium --version 1.18.4 --namespace kube-system \
-  --set ipam.mode=kubernetes --set kubeProxyReplacement=false
-
-# hcloud Cloud Controller Manager (setzt Instanz-Labels; kubelet läuft
-# bereits mit cloud-provider=external aus kubeletExtraArgs):
-helm repo add hcloud https://charts.hetzner.cloud
-kubectl -n kube-system create secret generic hcloud-credentials \
-  --from-literal=hcloud-token="$HCLOUD_TOKEN"
-kubectl -n kube-system apply -f - <<'EOF'
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hcloud-ccm-config
-  namespace: kube-system
-data:
-  cloud-config: |
-    token-location: /etc/hcloud/token
-    network: hetzner-cluster
-    private-network-only: false
-EOF
-helm install hccm hcloud/hcloud-cloud-controller-manager --namespace kube-system \
-  --set secretName=hcloud-credentials --set secretKeyName=hcloud-token \
-  --set cloudConfigName=hcloud-ccm-config
-
-kubectl get nodes -o wide   # alle Nodes sollten Ready werden
+KUBECONFIG=$PWD/hetzner-cluster.kubeconfig kubectl get nodes -o wide
 ```
+
+Sveltos deployt Cilium zuerst und den hcloud-CCM danach (`dependsOn`) — die
+Nodes werden dadurch Ready, ohne manuellen Eingriff.
 
 ### 3.5 Versionen upgraden (falls gewünscht)
 
@@ -223,8 +212,8 @@ pflegen und `kubectl apply -f manifests/` ausführen — KCP macht den Rest
 | `Unsupported value: "fsn"` | Location-Format falsch | `fsn1` |
 | `waiting for control-plane endpoint` (Loop) | `spec.controlPlaneEndpoint` fehlt | `{host:"", port:443}` → LB wird erstellt |
 | kind liefert kein Ignition | Flag nicht vor clusterctl init gesetzt | `export EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION=true` |
-| Node `NotReady` / `cni plugin not initialized` | kein CNI | Cilium installieren (`kubeProxyReplacement=false`) |
-| Node Ready, aber CAPI `Machine Ready=Unknown` | Node.providerID fehlt | CCM installieren + kubelet `--cloud-provider=external`; Notfall: `kubectl patch node ... -p '{"spec":{"providerID":"hcloud://<serverId>"}}'` |
+| Node `NotReady` / `cni plugin not initialized` | kein CNI | Sveltos `ClusterProfile/cilium` prüfen (`kubeProxyReplacement=false`) |
+| Node Ready, aber CAPI `Machine Ready=Unknown` | Node.providerID fehlt | Sveltos `ClusterProfile/hcloud-ccm` prüfen + kubelet `cloud-provider=external`; Notfall: `kubectl patch node ... -p '{"spec":{"providerID":"hcloud://<serverId>"}}'` |
 | SSH `Permission denied` trotz Key in Hetzner | Flatcar bekommt Keys nicht injiziert | `users:` mit `sshAuthorizedKeys` im `kubeadmConfigSpec` |
 | CP-Machine hängt in `Deleting` | alte Machine, CAPH-Finalizer | CAPH-Controller neu starten, ggf. Machine-Finalizer prüfen |
 
@@ -244,15 +233,15 @@ pflegen und `kubectl apply -f manifests/` ausführen — KCP macht den Rest
 | Control-Plane | Neubau | `hetzner-control-plane-b44mg` (Server läuft) |
 | Worker (3x) | Neubau | `hetzner-worker-md-xr7sf-*` (Server laufen) |
 | Kubernetes | **v1.36.4** | upstream `kubernetes-v1.36.4-x86-64.raw` (sysext-bakery) |
-| CNI | ✔ Cilium 1.18.4 | neu installiert nach Neubau (helm, Abschnitt 3.4) |
-| CCM | ✔ hcloud-cloud-controller-manager | installiert; setzt providerID + Labels (kubelet läuft mit `--cloud-provider=external`) |
+| CNI | ✔ Cilium 1.18.4 | via Sveltos `ClusterProfile/cilium` (Abschnitt 3.4) |
+| CCM | ✔ hcloud-cloud-controller-manager | via Sveltos `ClusterProfile/hcloud-ccm`; setzt providerID + Labels |
 | Nodes | ✔ alle Ready | 1 CP + 3 Worker, v1.36.4 |
 | Kubeconfig | ✔ `hetzner-cluster.kubeconfig` | im Repo-Root, gitignored |
 
-> Nach einem vollständigen Cluster-Neubau (Löschen aller CAPI-Objekte) müssen
-> CNI + CCM (Abschnitt 3.4) im frischen Workload-Cluster neu installiert werden,
-> da diese innerhalb des Workload-Clusters laufen. Nach Neuinstallation werden
-> alle Nodes `Ready` (inkl. korrekter providerID durch den CCM — kein manuelles
+> Nach einem vollständigen Cluster-Neubau (Löschen aller CAPI-Objekte) werden
+> CNI + CCM (Abschnitt 3.4) von Sveltos automatisch im frischen Workload-Cluster
+> installiert, sobald dieser das Profil-Label `addons: enabled` trägt. Danach
+> werden alle Nodes `Ready` (inkl. korrekter providerID durch den CCM — kein manuelles
 > Patch mehr nötig). Scale-Down/Up über das MachineDeployment (replicas) wird von
 > CAPI mit Drain/Cordon ausgeführt — die Nodes zeigen dabei kurzfristig
 > `Ready,SchedulingDisabled`.
