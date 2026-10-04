@@ -46,6 +46,33 @@ need (see `scripts/07-install-sveltos.sh`): `accessManager`,
 `hc-manager` (health checks), `event-manager`, and one `sveltos-agent` per
 managed cluster (runs in the hub in Mode 2).
 
+## Sveltos agents
+
+Sveltos runs one `sveltos-agent` per registered cluster. In Mode 2 they all
+live in the hub. Identify them by their labels (or `--cluster-name` args):
+
+```bash
+kubectl -n projectsveltos get deploy -l feature=sveltos-agent \
+  -o custom-columns='AGENT:.metadata.name,CLUSTER:.metadata.labels.cluster-name,TYPE:.metadata.labels.cluster-type'
+```
+
+- `cluster-type=capi` → a CAPI workload cluster (e.g. `hetzner-cluster`).
+- `cluster-type=sveltos` → a classically registered cluster; here the hub
+  itself (`mgmt`), registered by the chart's `registerMgmtCluster` job.
+
+CAPI clusters are tracked as CAPI clusters, not as `SveltosCluster` objects —
+that is why `kubectl get sveltoscluster -A` only shows `mgmt`. Look at
+`kubectl get clustersummary -A` (names ending `capi-<cluster>`) for their
+provisioning status.
+
+**Why does the hub itself have an agent?** Because the Helm chart self-registers
+the hub as a managed cluster (the `registerMgmtCluster` job), so Sveltos treats
+the hub like any other managed cluster and gives it an agent. It is **not**
+required to manage the workload clusters — only to manage addons *on the hub*
+and to run drift/health on it. To drop it, delete the `mgmt` SveltosCluster
+(`kubectl delete sveltoscluster -n mgmt mgmt`). The chart has no `enabled`
+toggle for self-registration, so a later `helm upgrade` may recreate it.
+
 ## Verify
 
 ```bash
@@ -67,6 +94,27 @@ kubectl get nodes
 `syncMode: Continuous` reconciles changes to the profiles. Switch to
 `ContinuousWithDriftDetection` to also revert out-of-band changes (the agent
 runs hub-side in Mode 2, so it works even before the workload has a CNI).
+
+## Upgrades
+
+Bump `chartVersion` in the `ClusterProfile` and re-apply it; `syncMode:
+Continuous` makes Sveltos roll the Helm release on matching clusters. This was
+verified in this PoC with a Cilium upgrade.
+
+```bash
+# edit addons/clusterprofile-cilium.yaml (chartVersion), then:
+kubectl apply -f addons/clusterprofile-cilium.yaml
+kubectl get clustersummary -A          # watch provisioning
+```
+
+For fleets, set `maxUpdate` / use `tier`s to roll out conservatively, and turn
+on drift detection (`ContinuousWithDriftDetection`) + `validateHealths`.
+
+## Further reading
+
+- Sveltos — <https://projectsveltos.io/>
+- "Projectsveltos with Hetzner Cloud and Cluster API" — <https://www.reddit.com/r/kubernetes/comments/zemvvo/projectsveltos_with_hetzner_cloud_and_clusterapi/>
+- Full reference list: [README.md](README.md)
 
 ## Notes
 

@@ -27,7 +27,7 @@ geladen und von Flatcars `systemd-sysext` nach `/usr` gemerged.
 | `addons/`                | Sveltos `ClusterProfile`s (Cilium, hcloud-CCM) + Credential-Template |
 | `flatcar.pkr.hcl`        | Packer-Template: **vanilla** Flatcar-Snapshot für Hetzner (x86, stable), Label `caph-image-name=flatcar-stable-x86` |
 | `scripts/`               | Idempotente Setup-Scripts (kind, clusterctl, Snapshot, apply, Sveltos) |
-| `../docs/`               | Architektur, Bootstrap-Schritte, Addon-Doku |
+| `../docs/`               | Architektur, Bootstrap-Schritte, Addon-Doku (Index: `../docs/README.md`) |
 
 ## Wie Kubernetes auf die Nodes kommt
 

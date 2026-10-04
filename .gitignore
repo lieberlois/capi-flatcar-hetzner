@@ -9,3 +9,4 @@
 manual-flatcar/capi-logic.tar.xz
 manual-flatcar/sysext/**/usr/bin/
 flatcar-imagebuilder-hetzner/image-builder/
+*_KUBECONFIG
