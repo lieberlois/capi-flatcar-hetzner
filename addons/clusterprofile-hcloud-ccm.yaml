@@ -6,12 +6,12 @@ spec:
   clusterSelector:
     matchLabels:
       addons: enabled
-  # Deploy the CCM only after Cilium, so nodes can become Ready first.
-  dependsOn:
-  - cilium
+  # NOTE: no dependsOn. Ordering on Cilium caused a Sveltos delete/recreate
+  # deadlock ("still depends on this profile"); the CCM is fine to deploy in
+  # parallel and simply waits for the CNI before its pod can start.
   syncMode: Continuous
-  # Distributes the hcloud credentials Secret + ConfigMap (rendered into the
-  # ConfigMap "hcloud-ccm-addon" by scripts/08-apply-addons.sh; token never in git).
+  # Distributes the hcloud credentials Secret (rendered into the ConfigMap
+  # "hcloud-ccm-addon" by scripts/08-apply-addons.sh; token never in git).
   policyRefs:
   - kind: ConfigMap
     name: hcloud-ccm-addon
@@ -24,7 +24,3 @@ spec:
     releaseName: hccm
     releaseNamespace: kube-system
     helmChartAction: Install
-    values: |
-      secretName: hcloud-credentials
-      secretKeyName: hcloud-token
-      cloudConfigName: hcloud-ccm-config

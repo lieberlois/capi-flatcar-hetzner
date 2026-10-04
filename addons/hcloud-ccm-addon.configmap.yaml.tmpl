@@ -1,7 +1,9 @@
 # Template — rendered by scripts/08-apply-addons.sh.
 # __HCLOUD_TOKEN_B64__ is replaced with the base64-encoded value of $HCLOUD_TOKEN.
-# The rendered ConfigMap lives in the HUB; Sveltos copies its data (the Secret +
-# ConfigMap manifests below) into each matching workload cluster.
+# Sveltos copies the rendered data into each matching workload cluster.
+#
+# The hcloud-cloud-controller-manager chart reads the token from a Secret named
+# "hcloud", key "token" (hardcoded in the chart's default env), in kube-system.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,19 +14,8 @@ data:
     apiVersion: v1
     kind: Secret
     metadata:
-      name: hcloud-credentials
+      name: hcloud
       namespace: kube-system
     type: Opaque
     data:
-      hcloud-token: __HCLOUD_TOKEN_B64__
-  config.yaml: |
-    apiVersion: v1
-    kind: ConfigMap
-    metadata:
-      name: hcloud-ccm-config
-      namespace: kube-system
-    data:
-      cloud-config: |
-        token-location: /etc/hcloud/token
-        network: hetzner-cluster
-        private-network-only: false
+      token: __HCLOUD_TOKEN_B64__
