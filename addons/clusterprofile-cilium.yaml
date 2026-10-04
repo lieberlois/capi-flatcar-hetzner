@@ -32,3 +32,7 @@ spec:
       k8sServicePort: "{{ .Cluster.spec.controlPlaneEndpoint.port }}"
       bpf:
         masquerade: true
+      # Single/small clusters: the default operator replicas=2 leaves a Pending
+      # replica (host ports) on a one-node cluster.
+      operator:
+        replicas: 1
