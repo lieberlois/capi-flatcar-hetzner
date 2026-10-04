@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 02 — Projektlokales SSH-Keypair erzeugen und nach Hetzner hochladen.
 set -euo pipefail
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 : "${HCLOUD_TOKEN:?HCLOUD_TOKEN setzen (.env)}"
 

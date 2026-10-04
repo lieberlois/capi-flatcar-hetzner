@@ -5,8 +5,8 @@
 # ConfigMap that carries the workload hcloud credentials (token from .env,
 # never committed) and applies the declarative ClusterProfiles.
 set -euo pipefail
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ADDONS="$REPO_ROOT/manual-flatcar/addons"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ADDONS="$REPO_ROOT/addons"
 : "${HCLOUD_TOKEN:?HCLOUD_TOKEN setzen (.env)}"
 
 TOKEN_B64="$(printf '%s' "$HCLOUD_TOKEN" | base64 | tr -d '\n')"

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-04
 - **Status:** Approved (design), implementation in progress
-- **Scope:** Manual Flatcar/Hetzner CAPI PoC (`manual-flatcar/`)
+- **Scope:** Manual Flatcar/Hetzner CAPI PoC (repo root)
 
 ## Goal
 

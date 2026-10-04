@@ -101,7 +101,7 @@ hcloud ssh-key create --name hetzner-flatcar-key \
 # 3) Vanilla-Flatcar-Snapshot bauen (NUR x86 — ARM/cax11 ist nicht in fsn1 verfügbar):
 #    Der Snapshot enthält KEINE Kubernetes-Binaries/Units; diese kommen beim
 #    Provisioning per Ignition aus der upstream sysext-bakery (siehe §1/§3.3).
-packer init .        # im Verzeichnis manual-flatcar/ (flatcar.pkr.hcl)
+packer init .        # im Repo-Root (flatcar.pkr.hcl)
 packer build .
 # → Snapshot "flatcar-stable-x86", Flatcar 4593.2.5 stable
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 03 — Vanilla-Flatcar-Snapshot bauen (Packer) und für CAPH labeln.
 set -euo pipefail
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${HCLOUD_TOKEN:?HCLOUD_TOKEN setzen (.env)}"
 
-cd "$REPO_ROOT/manual-flatcar"
+cd "$REPO_ROOT"
 packer init .
 packer build .
 

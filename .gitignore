@@ -1,15 +1,5 @@
 .ssh/
 *.kubeconfig
 .env
-
-# Private keys copied out of .ssh/ (never commit these)
-**/hetzner-flatcar-key
-
-# Large build artifacts / vendored upstream checkouts
-manual-flatcar/capi-logic.tar.xz
-manual-flatcar/sysext/**/usr/bin/
-flatcar-imagebuilder-hetzner/image-builder/
-*_KUBECONFIG
-
-# bare kubeconfig files (no .kubeconfig extension) must never be committed
 *KUBECONFIG*
+**/hetzner-flatcar-key

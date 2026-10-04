@@ -10,7 +10,7 @@ A CAPI `Cluster` with the label `addons: enabled` is picked up by both
 profiles:
 
 ```yaml
-# manual-flatcar/manifests/cluster.yaml
+# manifests/cluster.yaml
 metadata:
   labels:
     addons: enabled

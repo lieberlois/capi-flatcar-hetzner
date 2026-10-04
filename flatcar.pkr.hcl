@@ -52,6 +52,6 @@ build {
 
   # Kubernetes binaries/units are no longer baked into the image.
   # The upstream sysext-bakery kubernetes.raw is fetched at provisioning time
-  # via Ignition (see manual-flatcar/manifests/*.yaml) and merged into /usr by
+  # via Ignition (see manifests/*.yaml) and merged into /usr by
   # Flatcar's systemd-sysext. This snapshot is a plain, labeled Flatcar base.
 }
