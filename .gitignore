@@ -1,3 +1,11 @@
 .ssh/
 *.kubeconfig
 .env
+
+# Private keys copied out of .ssh/ (never commit these)
+**/hetzner-flatcar-key
+
+# Large build artifacts / vendored upstream checkouts
+manual-flatcar/capi-logic.tar.xz
+manual-flatcar/sysext/**/usr/bin/
+flatcar-imagebuilder-hetzner/image-builder/

@@ -26,8 +26,9 @@ source "hcloud" "flatcar" {
   rescue   = "linux64"
 
   snapshot_labels = {
-    os      = "flatcar"
-    channel = var.channel
+    os              = "flatcar"
+    channel         = var.channel
+    caph-image-name = "flatcar-stable-x86"
   }
 
   ssh_username = "root"
@@ -46,6 +47,24 @@ build {
       "curl -fsSLO --retry-delay 1 --retry 60 --retry-connrefused --retry-max-time 60 --connect-timeout 20 https://raw.githubusercontent.com/flatcar/init/flatcar-master/bin/flatcar-install",
       "chmod +x flatcar-install",
       "./flatcar-install -s -o hetzner -C ${var.channel}",
+    ]
+  }
+
+  # ---- copy the system‑extension into the future root partition ----
+  provisioner "file" {
+    source      = "capi-logic.tar.xz"
+    destination = "/tmp/capi-logic.tar.xz"
+  }
+
+  provisioner "shell" {
+    inline = [
+      "ROOTDEV=$(blkid -l -t LABEL=ROOT -o device)",
+      "mkdir -p /mnt/rootfs",
+      "mount $ROOTDEV /mnt/rootfs",
+      "mkdir -p /mnt/rootfs/usr/lib/extensions",
+      "tar -C /mnt/rootfs/usr/lib/extensions -xJf /tmp/capi-logic.tar.xz",
+      "umount /mnt/rootfs",
+      "rm /tmp/capi-logic.tar.xz",
     ]
   }
 }
