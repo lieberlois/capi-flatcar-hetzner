@@ -33,8 +33,8 @@ and merged into `/usr` by Flatcar's `systemd-sysext`.
 
 1. Packer builds a **vanilla** Flatcar snapshot (no binaries, no units).
 2. During provisioning, Ignition reads the `kubeadmConfigSpec`:
-   - No `/etc` file overrides: kubeadm runs with `ignorePreflightErrors` for the
-     bridge-nf check (Cilium handles forwarding; kube-proxy is skipped).
+   - A sysctl file (`/etc/sysctl.d/99-kubernetes.conf`) sets the Kubernetes
+     networking prerequisites (`bridge-nf-call-iptables`, `ip_forward`).
    - `ignition.containerLinuxConfig.additionalConfig` loads the
      official `kubernetes-v1.36.5-x86-64.raw` over HTTP to
      `/opt/extensions/kubernetes/` and symlinks `/etc/extensions/kubernetes.raw`.

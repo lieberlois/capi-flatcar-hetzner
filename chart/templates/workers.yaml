@@ -29,6 +29,16 @@ spec:
       - name: root
         sshAuthorizedKeys:
         - {{ $.Values.sshAuthorizedKey | quote }}
+      files:
+      # kubeadm preflight requires bridge-nf-call-iptables / ip_forward.
+      - content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+          net.ipv4.conf.lxc*.rp_filter = 0
+        owner: root:root
+        path: /etc/sysctl.d/99-kubernetes.conf
+        permissions: "0644"
       ignition:
         containerLinuxConfig:
           additionalConfig: |
@@ -60,8 +70,6 @@ spec:
         - addon/kube-proxy
         nodeRegistration:
           criSocket: /run/containerd/containerd.sock
-          ignorePreflightErrors:
-          - FileContent--proc-sys-net-bridge-bridge-nf-call-iptables
           kubeletExtraArgs:
           - name: cloud-provider
             value: external
