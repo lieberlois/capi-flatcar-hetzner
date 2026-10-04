@@ -230,7 +230,7 @@ pflegen und `kubectl apply -f manifests/` ausführen — KCP macht den Rest
 
 ---
 
-## 6. Aktueller Stand (nach Neubau, v1.36.3)
+## 6. Aktueller Stand (nach Neubau, v1.36.4)
 
 | Objekt | Status | Bemerkung |
 |--------|--------|-----------|

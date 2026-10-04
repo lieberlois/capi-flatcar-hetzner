@@ -12,7 +12,7 @@ reproduzierbar" heben. Reihenfolge = Priorität:
 | # | Phase | Warum zuerst |
 |---|-------|--------------|
 | A | Secrets/Security | teuerster Fehlerfall (Token-Leak) |
-| B | Versionen zentralisieren | driftet heute schon (v1.36.3 ×6) |
+| B | Versionen zentralisieren | driftet heute schon (v1.36.4 ×mehrfach) |
 | C | Packer deterministisch | Reproduzierbarkeit + Label-Konsistenz |
 | D | Manifests härten | explizit, hygienisch, selbstheilend |
 | E | OS-Updates entscheiden | größtes Risiko für Long-Lived-Cluster |
@@ -62,7 +62,7 @@ Umsetzung (zu verifizieren):
 ```bash
 # Guter Start: aus dem KCP/MD-Template ein ClusterClass generieren
 clusterctl generate cluster hetzner-cluster \
-  --kubernetes-version v1.36.3 \
+  --kubernetes-version v1.36.4 \
   --infrastructure hetzner \
   --control-plane-machine-count 1 --worker-machine-count 3 \
   --flavor <dein-flavor>    # Flavor optional
@@ -73,7 +73,7 @@ Danach: `Cluster` auf `topology:` umstellen, `ClusterClass` anlegen (CP/Worker �
 Wenn der ClusterClass-Umbau zu früh kommt, als Zwischenlösung ein kleines Skript, das die Manifeste aus **einer** Variablendatei rendert:
 ```bash
 # gen.sh (Platzhalter im Repo, Beispieldatei):
-K8S_VERSION=v1.36.3
+K8S_VERSION=v1.36.4
 sed "s|__K8S_VERSION__|$K8S_VERSION|g" templates/control-plane.yaml.in > manifests/control-plane.yaml
 ```
 Wichtig: dann sind die `.yaml`-Dateien Build-Artefakte — im Repo entweder die Quellen **oder** die Artefakte + CI-Validierung (Dateien nicht von Hand editieren).
