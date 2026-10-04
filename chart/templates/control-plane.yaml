@@ -74,8 +74,6 @@ spec:
                   [Unit]
                   After=containerd.service
     initConfiguration:
-      skipPhases:
-      - addon/kube-proxy
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
         {{- if $c.controlPlane.allowScheduling }}
@@ -85,8 +83,6 @@ spec:
         - name: cloud-provider
           value: external
     joinConfiguration:
-      skipPhases:
-      - addon/kube-proxy
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
         {{- if $c.controlPlane.allowScheduling }}

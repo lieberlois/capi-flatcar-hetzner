@@ -19,21 +19,10 @@ spec:
     values: |
       ipam:
         mode: kubernetes
-      # With --cloud-provider=external the Node has no address until the CCM
-      # runs (and the CCM needs the CNI) -> Cilium cannot auto-detect a device.
-      # Tunnel/datapath on the private interface (node-to-node stays internal),
-      # but masquerade pod egress on eth0 (the default route / public IP).
-      devices:
-      - eth1
-      directRoutingDevice: eth1
-      egressMasqueradeInterfaces: eth0
-      # Replace kube-proxy entirely (kubeadm skips the addon/kube-proxy phase).
-      kubeProxyReplacement: true
-      # Cilium needs the API endpoint before kube-proxy exists; take it from CAPI.
-      k8sServiceHost: "{{ .Cluster.spec.controlPlaneEndpoint.host }}"
-      k8sServicePort: "{{ .Cluster.spec.controlPlaneEndpoint.port }}"
-      bpf:
-        masquerade: true
+      # Cilium is the CNI only; kube-proxy handles service load-balancing.
+      # This avoids kube-proxy replacement's k8sServiceHost requirement and the
+      # device auto-detection problems on --cloud-provider=external nodes.
+      kubeProxyReplacement: false
       # Single/small clusters: the default operator replicas=2 leaves a Pending
       # replica (host ports) on a one-node cluster.
       operator:
