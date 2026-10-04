@@ -12,7 +12,7 @@ reproducible". Order = priority:
 | # | Phase | Why first |
 |---|-------|--------------|
 | A | Secrets/Security | most expensive failure case (token leak) |
-| B | Centralize versions | already drifting today (v1.36.4 ×several) |
+| B | Centralize versions | already drifting today (v1.36.5 ×several) |
 | C | Deterministic Packer | reproducibility + label consistency |
 | D | Harden manifests | explicit, hygienic, self-healing |
 | E | Decide on OS updates | biggest risk for long-lived clusters |
@@ -68,9 +68,9 @@ For a large fleet you can additionally move to Cluster API's managed topologies
 The Helm chart already covers the common case and is simpler.
 
 ### B.3 Kubernetes binaries: sysext instead of baking
-Today the upstream **sysext-bakery** delivers the binaries via `kubernetes-v1.36.4-x86-64.raw` (kubelet/kubeadm/kubectl + CNI plugins). Ignition loads the `.raw` during provisioning; `systemd-sysext` merges it into `/usr`. Cluster construction thus depends on `extensions.flatcar.org`.
+Today the upstream **sysext-bakery** delivers the binaries via `kubernetes-v1.36.5-x86-64.raw` (kubelet/kubeadm/kubectl + CNI plugins). Ignition loads the `.raw` during provisioning; `systemd-sysext` merges it into `/usr`. Cluster construction thus depends on `extensions.flatcar.org`.
 
-**Option 1 (immediate, cheap):** pin the version (currently `v1.36.4`) and use the sysupdate conf from the bakery (`systemd-sysupdate.timer`) so that patch levels within the same minor version are pulled in automatically. The sysupdate conf has `Verify=false` upstream — plan your own verification/signatures for production.
+**Option 1 (immediate, cheap):** pin the version (currently `v1.36.5`) and use the sysupdate conf from the bakery (`systemd-sysupdate.timer`) so that patch levels within the same minor version are pulled in automatically. The sysupdate conf has `Verify=false` upstream — plan your own verification/signatures for production.
 
 **Option 2 (better, long term):** mirror the `.raw` into an internal mirror/registry (Harbor/OCI) and sign it; nodes then fetch from your own mirror instead of directly from GitHub/flatcar.org.
 
@@ -164,17 +164,12 @@ Accompanying measures (mandatory):
 - MHC/KCP timeouts > max. reboot duration (see D.3, `nodeStartupTimeout: 20m`).
 - Reinstall after every cluster rebuild (like Cilium/CCM).
 
-### Option B: turn off auto-update
-Extend Ignition with a systemd mask (in both bootstrap configs):
-```yaml
-    - content: |
-        lock=false
-      owner: root:root
-      path: /etc/flatcar/update.conf        # pause update-engine
-      permissions: "0644"
-    # additionally: mask locksmithd.service via Ignition (systemd.units: mask: true)
-```
-Plus: OS rollover exclusively via a new snapshot + CAPI rolling (deterministic, manual).
+### Option B: turn off auto-update (IMPLEMENTED)
+The Helm chart masks `update-engine.service` and `locksmithd.service` via Ignition
+(`systemd.units: mask: true`), so nodes never self-update or self-reboot.
+Kubernetes and OS updates are rolled by CAPI as new nodes
+(bump `kubernetesVersion` in `chart/values.yaml`, re-apply). Deterministic; no
+automatic patch flow.
 
 **Record the decision** (e.g. in README/plan §8) — the status quo (floating `stable` + self-reboot) is not viable for a managed cluster.
 

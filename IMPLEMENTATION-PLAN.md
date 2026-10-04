@@ -6,7 +6,7 @@
 > the **Cluster API Provider Hetzner** (CAPH) and **Ignition** bootstrap.
 >
 > Every line here was actually executed and verified in this session.
-> Target configuration: 1 control plane + 3 workers (cpx22), Kubernetes **v1.36.4**,
+> Target configuration: 1 control plane + 3 workers (cpx22), Kubernetes **v1.36.5**,
 > Flatcar **4757.2.1 stable**, CNI Cilium (via Sveltos).
 
 ---
@@ -28,7 +28,7 @@
 ```
 
 > **Kubernetes binaries:** no longer in the snapshot, but as the official
-> `kubernetes-v1.36.4-x86-64.raw` from the
+> `kubernetes-v1.36.5-x86-64.raw` from the
 > [sysext-bakery](https://github.com/flatcar/sysext-bakery). Ignition loads them
 > during provisioning into `/opt/extensions/` and symlinks
 > `/etc/extensions/kubernetes.raw`; `systemd-sysext` merges them into `/usr`.
@@ -220,7 +220,7 @@ and run `bash scripts/05-apply.sh` — KCP does the rest
 
 ---
 
-## 6. Current state (after rebuild, v1.36.4)
+## 6. Current state (after rebuild, v1.36.5)
 
 | Object | Status | Note |
 |--------|--------|-----------|
@@ -233,10 +233,10 @@ and run `bash scripts/05-apply.sh` — KCP does the rest
 | Cluster CR | ✔ Provisioned, init=True | |
 | Control plane | Rebuild | `hetzner-control-plane-b44mg` (server running) |
 | Workers (3x) | Rebuild | `hetzner-worker-md-xr7sf-*` (servers running) |
-| Kubernetes | **v1.36.4** | upstream `kubernetes-v1.36.4-x86-64.raw` (sysext-bakery) |
+| Kubernetes | **v1.36.5** | upstream `kubernetes-v1.36.5-x86-64.raw` (sysext-bakery) |
 | CNI | ✔ Cilium 1.18.4 | via Sveltos `ClusterProfile/cilium` (section 3.4) |
 | CCM | ✔ hcloud-cloud-controller-manager | via Sveltos `ClusterProfile/hcloud-ccm`; sets providerID + labels |
-| Nodes | ✔ all Ready | 1 CP + 3 workers, v1.36.4 |
+| Nodes | ✔ all Ready | 1 CP + 3 workers, v1.36.5 |
 | Kubeconfig | ✔ `hetzner-cluster.kubeconfig` | in the repo root, gitignored |
 
 > After a full cluster rebuild (deleting all CAPI objects), CNI + CCM (section 3.4)
@@ -258,46 +258,27 @@ and run `bash scripts/05-apply.sh` — KCP does the rest
 
 ---
 
-## 8. Further Outlook — automatic OS updates with kured (and CAPI compatibility)
+## 8. Update strategy — reprovision-only (implemented)
 
-Flatcar updates **itself** by default (update-engine, `stable` channel,
-in-place, including its own reboot). For a CAPI-managed cluster,
-uncontrolled rebooting is undesirable. Two clean options:
+Flatcar updates **itself** by default (update-engine, `stable` channel, in-place
+incl. its own reboot). Uncontrolled reboots are undesirable for a CAPI-managed
+cluster, so the chosen strategy is **reprovision-only**:
 
-**Option A (recommended): update-engine active + kured for safe reboots**
-- `update-engine` stays active and downloads/stages OS updates (stable channel).
-- **kured** (DaemonSet in the workload cluster, CNCF Sandbox) monitors the
-  reboot sentinel, takes a **cluster-wide lock** (only 1 node reboots
-  at a time), **cordons + drains** the node, reboots and uncordons it afterwards.
-- The Kubernetes binaries live in the upstream sysext-bakery extension
-  (`/opt/extensions/kubernetes/…raw`, loaded via Ignition) and are merged into `/usr`
-  by Flatcar's `systemd-sysext` → the node returns cleanly to the cluster
-  after the reboot.
-- Setup: `helm install kured kubereboot/kured` (or Helm repo) with
-  `--set` for the sentinel, window (`--start-time/--end-time`), and control-plane
-  tolerations.
+- The Helm chart's Ignition config **masks** `update-engine.service` and
+  `locksmithd.service` — nodes never self-update or self-reboot.
+- A worker `MachineHealthCheck` (plus KCP's built-in control-plane remediation)
+  handles unhealthy nodes.
+- **Kubernetes and OS updates are rolled by CAPI as new nodes**: bump
+  `kubernetesVersion` in `chart/values.yaml` (or rebuild the Flatcar snapshot for
+  an OS version change), re-apply, and KCP/MD replace the machines. New nodes
+  fetch the matching sysext via Ignition.
+- The unused `systemd-sysupdate` scaffolding (transfer config, service, timer) has
+  been removed — it is not part of this strategy.
 
-**Option B: turn off auto-update, roll the OS version via snapshot**
-- Mask `update-engine` + `locksmithd` in Ignition (`systemctl mask ...`).
-- Build a new Flatcar snapshot with the target version via `packer build` (same label),
-  recreate the `HCloudMachineTemplate` (immutable → delete+recreate), roll KCP/MD.
-- Deterministic, but manual — no automatic patch flow.
-
-**Compatibility kured ↔ Cluster API:**
-- kured runs **in the workload cluster** (like Cilium/CCM) — the management cluster and
-  the CAPI controllers are unaffected.
-- A reboot **does not change the machine identity**: the node comes back with the same
-  `providerID`, kubelet re-registers — CAPI sees the Machine
-  briefly as `NotReady`, then `Ready` again. **No machine recreate**, no
-  conflict with KCP/MD reconciles.
-- **Note:** `MachineHealthCheck`/KCP health checks report
-  briefly `NotHealthy`/etcd timeouts during a reboot. Set reboot windows + generous `nodeStartupTimeout`
-  so that CAPI does not remediate the reboot as unhealthy (otherwise deleting+rebuild).
-- Control-plane nodes need kured tolerations (`node-role.kubernetes.io/control-plane`)
-  and possibly `--drain-grace-period` — otherwise CP nodes are not touched.
-- After a **cluster rebuild**, kured must be reinstalled (like Cilium/CCM, section 3.4).
-- OS version drift: kured updates the **OS patch level** in-place. The
-  **Kubernetes version** remains independently controlled via `kubernetesVersion`
-  in the Helm chart (templated into `spec.version` and the Ignition sysext URLs).
-- For **major OS upgrades** (e.g. Flatcar channel/milestone changes), Option B
-  (snapshot + CAPI rolling) remains the clean path.
+> **Alternative (not used here): kured.** Instead of masking, keep `update-engine`
+> active and install **kured** (DaemonSet in the workload cluster) to coordinate
+> reboots (cluster-wide lock, cordon/drain, one node at a time), with generous
+> KCP/MHC `nodeStartupTimeout`s and control-plane tolerations. That gives automated
+> in-place OS patch updates at the cost of more moving parts. Either way, moving to
+> a new Flatcar milestone / Kubernetes minor stays a snapshot + CAPI rolling
+> operation.

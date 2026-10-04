@@ -11,9 +11,9 @@ and merged into `/usr` by Flatcar's `systemd-sysext`.
 
 ## Status
 
-- PoC: 1 control plane + 3 workers, Kubernetes **v1.36.4**
+- PoC: 1 control plane + 3 workers, Kubernetes **v1.36.5**
 - Stack: CAPH (Hetzner), Cilium (CNI), hcloud-cloud-controller-manager
-- Kubernetes binaries: upstream `kubernetes-v1.36.4-x86-64.raw` (sysext-bakery)
+- Kubernetes binaries: upstream `kubernetes-v1.36.5-x86-64.raw` (sysext-bakery)
 - The PoC cluster has since been deleted — the manifests, scripts and
   the setup guide are ready for a rebuild.
 
@@ -36,7 +36,7 @@ and merged into `/usr` by Flatcar's `systemd-sysext`.
    - No `/etc` file overrides: kubeadm runs with `ignorePreflightErrors` for the
      bridge-nf check (Cilium handles forwarding; kube-proxy is skipped).
    - `ignition.containerLinuxConfig.additionalConfig` loads the
-     official `kubernetes-v1.36.4-x86-64.raw` over HTTP to
+     official `kubernetes-v1.36.5-x86-64.raw` over HTTP to
      `/opt/extensions/kubernetes/` and symlinks `/etc/extensions/kubernetes.raw`.
    - Flatcar's `systemd-sysext` merges `/usr/bin/kubelet`,
      `/usr/bin/kubeadm`, `/usr/bin/kubectl`, CNI plugins and
@@ -46,6 +46,11 @@ and merged into `/usr` by Flatcar's `systemd-sysext`.
 
 No `/opt/bin`, no manual `kubelet.service` drop-ins and no
 imperative bootstrap commands — everything declarative via Ignition.
+
+**Updates (reprovision-only):** Flatcar's `update-engine` and `locksmithd` are
+**masked** in Ignition, so nodes never self-update or self-reboot. Kubernetes and
+OS updates are rolled by CAPI as **new nodes** — bump `kubernetesVersion` in
+`chart/values.yaml` and re-apply. See `docs/production-notes.md`.
 
 ## Quickstart (summary)
 

@@ -62,10 +62,11 @@ We apply `ClusterProfile`s with `kubectl`. Most teams keep them in Git:
 
 ## Node / OS lifecycle
 
-- `MachineHealthCheck`s for automatic remediation.
-- **kured** to coordinate Flatcar OS + sysext reboots (see
-  `ROBUSTNESS-GUIDE.md §E`), with generous KCP/MHC timeouts.
-- Optionally enable `systemd-sysupdate.timer` for in-place patch updates.
+- `MachineHealthCheck`s for automatic remediation (worker MHC shipped in the chart).
+- **Update strategy: reprovision-only (implemented).** Flatcar's `update-engine` +
+  `locksmithd` are **masked**; Kubernetes/OS updates roll **new nodes** via CAPI
+  (bump `kubernetesVersion`). The `systemd-sysupdate` scaffolding was removed.
+- (Alternative, not used) **kured** for coordinated in-place OS reboots.
 - Cluster Autoscaler / node pools per workload.
 - Observability: Prometheus/Grafana + Cilium Hubble; Sveltos itself exposes
   metrics and a Grafana dashboard.
