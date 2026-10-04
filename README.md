@@ -39,6 +39,41 @@ PoC / reference implementation — **verified end-to-end**:
   preserved;
 - Kubernetes version: **`v1.37.1`** (from `kubernetes-v1.37.1-x86-64.raw`).
 
+## Features
+
+- **No custom Kubernetes image.** `kubelet`/`kubeadm`/`kubectl` + CNI plugins come
+  from the upstream [sysext-bakery](https://github.com/flatcar/sysext-bakery),
+  fetched by Ignition and merged by `systemd-sysext`.
+- **Vanilla Flatcar base.** Packer only builds a plain, labeled Flatcar snapshot.
+- **Declarative addons.** Cilium (CNI), kube-proxy and the hcloud CCM are
+  delivered by Sveltos `ClusterProfile`s — nothing installed by hand.
+- **Clusters as a Helm chart.** Add a cluster = add a `chart/values.yaml` entry;
+  own namespace, own Kubernetes version per role, optional control-plane-only node.
+- **Reprovision-based upgrades.** OS self-update/reboot is masked; a version bump
+  rolls fresh nodes (KCP surge keeps etcd).
+- **Minimal OS plumbing.** No `/opt/bin`, no hand-written systemd drop-ins.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Helm["chart/ (clusters map)"] -->|helm template to kubectl apply| Hub
+  subgraph Hub["Management / hub cluster (currently: kind)"]
+    CAPI["CAPI + CAPH"]
+    Sveltos["Sveltos (Mode 2)"]
+  end
+  CAPI -->|provisions servers, LB, network| WL
+  Sveltos -->|Cilium, kube-proxy, hcloud CCM| WL
+  subgraph WL["Hetzner workload cluster(s)"]
+    CP["Control plane: etcd / apiserver"]
+    N["Flatcar node: kubelet from sysext"]
+  end
+```
+
+Details (CAPI resource graph, Sveltos flow, bootstrap order) are in
+[`docs/architecture.md`](docs/architecture.md) and
+[`docs/addons.md`](docs/addons.md).
+
 ## Structure
 
 | Path                     | Contents |
