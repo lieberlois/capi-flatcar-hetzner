@@ -1,5 +1,5 @@
-{{- $ns := .Values.namespace -}}
 {{- range $name, $c := .Values.clusters }}
+{{- $ns := $c.namespace | default "default" }}
 ---
 apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster

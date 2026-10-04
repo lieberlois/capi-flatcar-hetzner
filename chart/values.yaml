@@ -1,21 +1,18 @@
-# Single source of truth for the Kubernetes version.
-# It is templated into the control plane, the workers AND the Ignition sysext URLs.
-kubernetesVersion: v1.36.4
-
-# Namespace for the CAPI objects.
-namespace: default
-
-# CAPH reads the Hetzner token from this Secret (created by scripts/04-create-secret.sh).
+# Shared defaults. The Hetzner token Secret must exist in EACH cluster namespace
+# (see scripts/04-create-secret.sh); the SSH key is a Hetzner-project-level object.
 hetznerSecretName: hcloud
 hetznerSecretKey: hcloud
-
-# SSH public key injected into the Flatcar nodes via Ignition.
 sshAuthorizedKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgPVuRlet/qJl4KsKBI26n4l9oNp8nd/9hHXB07y27a capi-management-hetzner"
 
 # One entry per cluster. The map key is the cluster name.
-# Add another entry to stamp another cluster.
+# Each cluster has its own namespace, and its own Kubernetes version per role.
+#
+# Version resolution per role: <role>.kubernetesVersion, falling back to the
+# cluster's kubernetesVersion. The value is templated into spec.version AND the
+# Ignition sysext URLs for that role.
 clusters:
   hetzner-cluster:
+    namespace: default
     region: fsn1
     sshKeyName: hetzner-flatcar-key
     addons: true # label addons=enabled -> Sveltos installs Cilium + hcloud-CCM
@@ -25,11 +22,15 @@ clusters:
       enabled: true
       cidrBlock: 10.0.0.0/16
       subnetCidrBlock: 10.0.0.0/24
+    # Optional cluster-wide default; can be overridden per role below.
+    kubernetesVersion: v1.36.4
     controlPlane:
+      kubernetesVersion: v1.36.4
       replicas: 1
       machineType: cpx22
       imageName: flatcar-stable-x86
     workers:
+      kubernetesVersion: v1.36.4
       replicas: 1
       failureDomain: fsn1
       machineType: cpx22

@@ -1,7 +1,7 @@
-{{- $v := .Values.kubernetesVersion -}}
-{{- $minor := regexReplaceAll "\\.[0-9]+$" $v "" -}}
-{{- $ns := .Values.namespace -}}
 {{- range $name, $c := .Values.clusters }}
+{{- $ns := $c.namespace | default "default" }}
+{{- $v := $c.controlPlane.kubernetesVersion | default $c.kubernetesVersion }}
+{{- $minor := regexReplaceAll "\\.[0-9]+$" $v "" }}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
