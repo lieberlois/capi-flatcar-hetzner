@@ -37,6 +37,15 @@ The ConfigMap is **rendered at bootstrap** from `$HCLOUD_TOKEN`
 (`scripts/08-apply-addons.sh`) — the token is never committed to git. See
 `docs/bootstrap.md`.
 
+## Components
+
+Sveltos installs several controllers. This PoC disables the ones it does not
+need (see `scripts/07-install-sveltos.sh`): `accessManager`,
+`shardController`, `techsupportController`, `mcpServer`. Remaining:
+`addon-controller` (core), `sc-manager` (registration), `classifier-manager`,
+`hc-manager` (health checks), `event-manager`, and one `sveltos-agent` per
+managed cluster (runs in the hub in Mode 2).
+
 ## Verify
 
 ```bash
