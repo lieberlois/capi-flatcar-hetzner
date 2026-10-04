@@ -6,6 +6,7 @@
 | [bootstrap.md](bootstrap.md) | The imperative bootstrap steps and why they can't be GitOps'd |
 | [addons.md](addons.md) | Sveltos `ClusterProfile`s, agents, upgrades |
 | [production-notes.md](production-notes.md) | How a production setup typically differs from this PoC |
+| [further-work.md](further-work.md) | Out-of-scope follow-ups (single-node upgrades, CAPI v1.12 in-place/chained upgrades, …) |
 
 The approved design for the Sveltos work lives in
 [superpowers/specs/2026-10-04-sveltos-addons-design.md](superpowers/specs/2026-10-04-sveltos-addons-design.md).
