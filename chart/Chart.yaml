@@ -1,0 +1,6 @@
+apiVersion: v2
+name: capi-flatcar-hetzner
+description: Cluster API (CAPH) Flatcar/Hetzner cluster manifests, templated (name, Kubernetes version, replicas).
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

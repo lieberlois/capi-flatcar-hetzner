@@ -1,0 +1,120 @@
+{{- $v := .Values.kubernetesVersion -}}
+{{- $minor := regexReplaceAll "\\.[0-9]+$" $v "" -}}
+{{- $ns := .Values.namespace -}}
+{{- range $name, $c := .Values.clusters }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HCloudMachineTemplate
+metadata:
+  name: {{ $name }}-worker
+  namespace: {{ $ns }}
+spec:
+  template:
+    spec:
+      type: {{ $c.workers.machineType }}
+      imageName: {{ $c.workers.imageName }}
+      sshKeys:
+      - name: {{ $c.sshKeyName }}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: {{ $name }}-worker-config
+  namespace: {{ $ns }}
+spec:
+  template:
+    spec:
+      format: ignition
+      users:
+      - name: root
+        sshAuthorizedKeys:
+        - {{ $.Values.sshAuthorizedKey | quote }}
+      files:
+      # kubeadm preflight requires bridge-nf-call-iptables / ip_forward; keep this.
+      - content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+          net.ipv4.conf.lxc*.rp_filter = 0
+        owner: root:root
+        path: /etc/sysctl.d/99-kubernetes.conf
+        permissions: "0644"
+      ignition:
+        containerLinuxConfig:
+          additionalConfig: |
+            storage:
+              links:
+              - path: /etc/extensions/kubernetes.raw
+                hard: false
+                target: /opt/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
+              files:
+              - path: /etc/sysupdate.kubernetes.d/kubernetes-{{ $minor }}.conf
+                mode: 0644
+                contents:
+                  remote:
+                    url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-{{ $minor }}.conf
+              - path: /etc/sysupdate.d/noop.conf
+                mode: 0644
+                contents:
+                  remote:
+                    url: https://extensions.flatcar.org/extensions/noop.conf
+              - path: /opt/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
+                contents:
+                  remote:
+                    url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
+            systemd:
+              units:
+              - name: systemd-sysupdate.service
+                dropins:
+                - name: kubernetes.conf
+                  contents: |
+                    [Service]
+                    ExecStartPre=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes"
+                    ExecStartPre=/usr/lib/systemd/systemd-sysupdate -C kubernetes update
+                    ExecStartPost=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes-new"
+                    ExecStartPost=/usr/bin/sh -c "if ! cmp --silent /tmp/kubernetes /tmp/kubernetes-new; then touch /run/reboot-required; fi"
+              - name: systemd-sysupdate.timer
+                enabled: false
+              - name: kubeadm.service
+                dropins:
+                - name: 10-flatcar.conf
+                  contents: |
+                    [Unit]
+                    After=containerd.service
+      joinConfiguration:
+        skipPhases:
+        - addon/kube-proxy
+        nodeRegistration:
+          criSocket: /run/containerd/containerd.sock
+          kubeletExtraArgs:
+          - name: cloud-provider
+            value: external
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: {{ $name }}-worker
+  namespace: {{ $ns }}
+spec:
+  clusterName: {{ $name }}
+  replicas: {{ $c.workers.replicas }}
+  selector:
+    matchLabels: null
+  template:
+    metadata:
+      labels:
+        nodepool: worker
+    spec:
+      clusterName: {{ $name }}
+      version: {{ $v }}
+      failureDomain: {{ $c.workers.failureDomain }}
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: {{ $name }}-worker-config
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: HCloudMachineTemplate
+        name: {{ $name }}-worker
+{{- end }}

@@ -1,0 +1,56 @@
+{{- $ns := .Values.namespace -}}
+{{- range $name, $c := .Values.clusters }}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- if $c.addons }}
+    addons: enabled
+    {{- end }}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - {{ $c.podsCidr | quote }}
+    services:
+      cidrBlocks:
+      - {{ $c.servicesCidr | quote }}
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: {{ $name }}-control-plane
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: HetznerCluster
+    name: {{ $name }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HetznerCluster
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+spec:
+  controlPlaneEndpoint:
+    host: ""
+    port: 443
+  controlPlaneRegions:
+  - {{ $c.region }}
+  controlPlaneLoadBalancer:
+    region: {{ $c.region }}
+  hcloudNetwork:
+    enabled: {{ $c.network.enabled }}
+    cidrBlock: {{ $c.network.cidrBlock | quote }}
+    subnetCidrBlock: {{ $c.network.subnetCidrBlock | quote }}
+  hetznerSecretRef:
+    name: {{ $.Values.hetznerSecretName }}
+    key:
+      hcloudToken: {{ $.Values.hetznerSecretKey }}
+      hetznerRobotUser: robot-user
+      hetznerRobotPassword: robot-password
+  sshKeys:
+    hcloud:
+    - name: {{ $c.sshKeyName }}
+{{- end }}
