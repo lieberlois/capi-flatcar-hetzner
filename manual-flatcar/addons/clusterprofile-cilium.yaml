@@ -19,4 +19,10 @@ spec:
     values: |
       ipam:
         mode: kubernetes
-      kubeProxyReplacement: false
+      # Replace kube-proxy entirely (kubeadm skips the addon/kube-proxy phase).
+      kubeProxyReplacement: true
+      # Cilium needs the API endpoint before kube-proxy exists; take it from CAPI.
+      k8sServiceHost: "{{ .Cluster.spec.controlPlaneEndpoint.host }}"
+      k8sServicePort: "{{ .Cluster.spec.controlPlaneEndpoint.port }}"
+      bpf:
+        masquerade: true

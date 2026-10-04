@@ -113,6 +113,7 @@ on drift detection (`ContinuousWithDriftDetection`) + `validateHealths`.
 ## Further reading
 
 - Sveltos — <https://projectsveltos.io/>
+- Sveltos Cluster API use case (Docker) — <https://projectsveltos.io/main/use_cases/clusterAPI/use_case_docker/>
 - "Projectsveltos with Hetzner Cloud and Cluster API" — <https://www.reddit.com/r/kubernetes/comments/zemvvo/projectsveltos_with_hetzner_cloud_and_clusterapi/>
 - Full reference list: [README.md](README.md)
 

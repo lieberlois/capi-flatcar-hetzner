@@ -76,6 +76,8 @@ spec:
                   [Unit]
                   After=containerd.service
     initConfiguration:
+      skipPhases:
+      - addon/kube-proxy
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
         kubeletExtraArgs:
@@ -84,6 +86,8 @@ spec:
         - name: resolv-conf
           value: /etc/kubernetes/resolv.conf
     joinConfiguration:
+      skipPhases:
+      - addon/kube-proxy
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
         kubeletExtraArgs:

@@ -69,6 +69,8 @@ spec:
                     [Unit]
                     After=containerd.service
       joinConfiguration:
+        skipPhases:
+        - addon/kube-proxy
         nodeRegistration:
           criSocket: /run/containerd/containerd.sock
           kubeletExtraArgs:
