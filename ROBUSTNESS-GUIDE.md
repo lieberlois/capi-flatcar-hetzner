@@ -1,38 +1,38 @@
 # Robustness Guide — Flatcar + Hetzner + CAPI
 
-> **Status: Vorschläge, NUR TEILWEISE VERIFIZIERT.** Anders als
-> `IMPLEMENTATION-PLAN.md` (jede Zeile wurde real ausgeführt) sind die Schritte
-> hier ein **Fahrplan** für einen robusten Long-Lived-Cluster. Jede Änderung
-> sollte vor Nutzung in einer frischen Umgebung validiert werden — besonders die
-> Helm-Werte, MHC-Parameter und der ClusterClass-Umbau.
+> **Status: proposals, ONLY PARTIALLY VERIFIED.** Unlike
+> `IMPLEMENTATION-PLAN.md` (every line was actually executed), the steps
+> here are a **roadmap** for a robust long-lived cluster. Every change
+> should be validated in a fresh environment before use — especially the
+> Helm values, MHC parameters and the ClusterClass conversion.
 
-Ziel: den PoC von „funktioniert einmal" zu „ausfallsicher, wartbar,
-reproduzierbar" heben. Reihenfolge = Priorität:
+Goal: raise the PoC from "works once" to "failure-tolerant, maintainable,
+reproducible". Order = priority:
 
-| # | Phase | Warum zuerst |
+| # | Phase | Why first |
 |---|-------|--------------|
-| A | Secrets/Security | teuerster Fehlerfall (Token-Leak) |
-| B | Versionen zentralisieren | driftet heute schon (v1.36.4 ×mehrfach) |
-| C | Packer deterministisch | Reproduzierbarkeit + Label-Konsistenz |
-| D | Manifests härten | explizit, hygienisch, selbstheilend |
-| E | OS-Updates entscheiden | größtes Risiko für Long-Lived-Cluster |
-| F | Automation/CI | Fehlerquellen reduzieren |
-| G | Backup/DR | noch gar nicht existent |
+| A | Secrets/Security | most expensive failure case (token leak) |
+| B | Centralize versions | already drifting today (v1.36.4 ×several) |
+| C | Deterministic Packer | reproducibility + label consistency |
+| D | Harden manifests | explicit, hygienic, self-healing |
+| E | Decide on OS updates | biggest risk for long-lived clusters |
+| F | Automation/CI | reduce sources of error |
+| G | Backup/DR | not present at all yet |
 
 ---
 
 ## A. Secrets & Security
 
-### A.1 HCLOUD_TOKEN nie in Shell-History / Inline
+### A.1 Never put HCLOUD_TOKEN in shell history / inline
 
-Heute steht der Token inline in der Doku (`kubectl create secret ... --from-literal=hcloud="$HCLOUD_TOKEN"`) und landet damit in der Shell-History und potenziell in `/proc`-Dumps.
+Today the token appears inline in the docs (`kubectl create secret ... --from-literal=hcloud="$HCLOUD_TOKEN"`) and thus ends up in the shell history and potentially in `/proc` dumps.
 
-**Sofort umsetzen:**
+**Implement immediately:**
 ```bash
-# .env (gitignored) statt Inline-Export:
+# .env (gitignored) instead of inline export:
 set -a && source .env && set +a
 
-# Secret aus Datei statt --from-literal:
+# Secret from a file instead of --from-literal:
 printf '%s' "$HCLOUD_TOKEN" > /tmp/hcloud-token
 kubectl create secret generic hcloud -n default \
   --from-file=hcloud=/tmp/hcloud-token \
@@ -41,89 +41,78 @@ kubectl create secret generic hcloud -n default \
 rm /tmp/hcloud-token
 ```
 
-**Mittelfristig:**
-- Token mit GPG/gopass verschlüsseln, erst beim Einsatz entschlüsseln (`export HCLOUD_TOKEN="$(gopass show hetzner/api-token)"`).
-- Meilenstein-PoC → Produktion: CAPI-Secrets nicht per Hand, sondern per **External Secrets Operator** (Hetzner-Sekret nicht als externen Anbieter — dafür z. B. SOPS mit Age/Cloud-KMS für das `hcloud` Secret und die Workload-Secrets).
+**Medium term:**
+- Encrypt the token with GPG/gopass and decrypt it only at use (`export HCLOUD_TOKEN="$(gopass show hetzner/api-token)"`).
+- Milestone PoC → production: manage CAPI secrets not by hand but via the **External Secrets Operator** (Hetzner secret not as an external provider — instead e.g. SOPS with age/cloud KMS for the `hcloud` secret and the workload secrets).
 
-### A.2 SSH-Keys
-- Ein projektweiter Key steckt in beiden Templates. Optional: **separater Key pro Node-Pool** (CP vs. Workers), damit ein Leak nicht gleich den ganzen Cluster exponiert.
-- Prüfen, ob Root-SSH überhaupt nötig ist (Debug-Zugang). Können Keys später via `users:` aus Templates entfernt und nur für Notfälle injiziert werden?
-
----
-
-## B. Versionen: eine Quelle, keine Duplikate
-
-Derzeit ist `v1.36.4` **mehrfach** verteilt: `spec.version` (KCP + MD) und je drei Stellen im `ignition.containerLinuxConfig.additionalConfig` (Link-Target, `.raw`-Pfad, `.raw`-URL) sowie die Sysupdate-Conf beider Bootstrap-Configs. CP und Worker duplizieren den kompletten Block. Das driftet garantiert.
-
-### B.1 (Empfohlen) ClusterClass + Topology
-Kosten: einmalig Umbau. Nutzen: Node-Templates und Bootstrap-Daten **einmal** definieren, CP und Worker dort ableiten; Version/Image zentral als Parameter.
-
-Umsetzung (zu verifizieren):
-```bash
-# Guter Start: aus dem KCP/MD-Template ein ClusterClass generieren
-clusterctl generate cluster hetzner-cluster \
-  --kubernetes-version v1.36.4 \
-  --infrastructure hetzner \
-  --control-plane-machine-count 1 --worker-machine-count 3 \
-  --flavor <dein-flavor>    # Flavor optional
-```
-Danach: `Cluster` auf `topology:` umstellen, `ClusterClass` anlegen (CP/Worker über `machineDeployments`/`controlPlane.machineTemplate` im Topology referenziert). `HCloudMachineTemplate`/`HCloudMachineClass` lebt dann einmal, nicht zweimal.
-
-### B.2 Bis dahin: Ein-Generator-Skript
-Wenn der ClusterClass-Umbau zu früh kommt, als Zwischenlösung ein kleines Skript, das die Manifeste aus **einer** Variablendatei rendert:
-```bash
-# gen.sh (Platzhalter im Repo, Beispieldatei):
-K8S_VERSION=v1.36.4
-sed "s|__K8S_VERSION__|$K8S_VERSION|g" templates/control-plane.yaml.in > manifests/control-plane.yaml
-```
-Wichtig: dann sind die `.yaml`-Dateien Build-Artefakte — im Repo entweder die Quellen **oder** die Artefakte + CI-Validierung (Dateien nicht von Hand editieren).
-
-### B.3 Kubernetes-Binaries: sysext statt Baking
-Heute liefert die upstream **sysext-bakery** `kubernetes-v1.36.4-x86-64.raw` die Binaries (kubelet/kubeadm/kubectl + CNI-Plugins). Ignition lädt die `.raw` beim Provisioning; `systemd-sysext` merged sie nach `/usr`. Der Cluster-Aufbau hängt damit an `extensions.flatcar.org`.
-
-**Option 1 (sofort, billig):** Version pinnen (aktuell `v1.36.4`) und die Sysupdate-Conf aus der Bakery nutzen (`systemd-sysupdate.timer`), damit Patchlevel innerhalb derselben Minor-Version automatisch nachgezogen werden. Die Sysupdate-Conf hat upstream `Verify=false` — für Produktion eigene Verifikation/Signaturen einplanen.
-
-**Option 2 (besser, langfristig):** `.raw` in einen internen Mirror/Registry spiegeln (Harbor/OCI) und signieren; Nodes beziehen dann aus dem eigenen Mirror statt direkt von GitHub/flatcar.org.
+### A.2 SSH keys
+- One project-wide key is in both templates. Optional: **separate key per node pool** (CP vs. workers), so that a leak does not immediately expose the whole cluster.
+- Check whether root SSH is even necessary (debug access). Can keys later be removed from the templates via `users:` and injected only for emergencies?
 
 ---
 
-## C. Packer deterministisch
+## B. Versions: one source, no duplicates
 
-### C.1 Label aus Variable ableiten (Bugfix)
+The Kubernetes version used to be distributed several times (`spec.version` + the Ignition sysext URLs) and would drift. It is now centralized in the Helm chart: each cluster sets `kubernetesVersion`, overridable per role (`controlPlane.kubernetesVersion` / `workers.kubernetesVersion`), and it is templated into `spec.version` **and** the Ignition sysext URLs. `chart/values.yaml` is the single place; no drift.
+
+### B.1 Done: Helm chart (this repo)
+`chart/` is a Helm chart. `chart/values.yaml` holds a map of clusters; the
+Kubernetes version is set per cluster and can be overridden per role
+(`controlPlane` / `workers`). It is templated into `spec.version` and the
+Ignition sysext URLs, and all names/machine types/replicas/network too.
+Apply with `bash scripts/05-apply.sh` (which runs `helm template`).
+
+### B.2 (Optional, future) ClusterClass + managed topologies
+For a large fleet you can additionally move to Cluster API's managed topologies
+(ClusterClass + `Cluster.spec.topology`); CAPH ships a ClusterClass template.
+The Helm chart already covers the common case and is simpler.
+
+### B.3 Kubernetes binaries: sysext instead of baking
+Today the upstream **sysext-bakery** delivers the binaries via `kubernetes-v1.36.4-x86-64.raw` (kubelet/kubeadm/kubectl + CNI plugins). Ignition loads the `.raw` during provisioning; `systemd-sysext` merges it into `/usr`. Cluster construction thus depends on `extensions.flatcar.org`.
+
+**Option 1 (immediate, cheap):** pin the version (currently `v1.36.4`) and use the sysupdate conf from the bakery (`systemd-sysupdate.timer`) so that patch levels within the same minor version are pulled in automatically. The sysupdate conf has `Verify=false` upstream — plan your own verification/signatures for production.
+
+**Option 2 (better, long term):** mirror the `.raw` into an internal mirror/registry (Harbor/OCI) and sign it; nodes then fetch from your own mirror instead of directly from GitHub/flatcar.org.
+
+---
+
+## C. Deterministic Packer
+
+### C.1 Derive the label from a variable (bugfix)
 ```hcl
 snapshot_labels = {
   os              = "flatcar"
   channel         = var.channel
-  caph-image-name = "flatcar-${var.channel}-x86"   # statt hardcoded "stable"
+  caph-image-name = "flatcar-${var.channel}-x86"   # instead of hardcoded "stable"
 }
 ```
-Sonst erzeugt ein `-var channel=beta`-Build ein Snapshot mit falschem `caph-image-name`-Label und CAPH findet „flatcar-stable-x86" nicht.
+Otherwise a `-var channel=beta` build creates a snapshot with the wrong `caph-image-name` label and CAPH does not find "flatcar-stable-x86".
 
-### C.2 Release pinnen statt `stable` schweben lassen
-`flatcar-install -C stable` holt beim Build die **aktuelle** stabile Version. Für reproduzierbare Builds die getestete Version pinnen (z. B. `4593.2.5`), sobald das `flatcar-install`-CLI es hergibt (`--version`-Flag prüfen; ggf. `-V 4593.2.5`). Ergebnis dokumentieren.
+### C.2 Pin the release instead of letting `stable` float
+`flatcar-install -C stable` fetches the **current** stable version at build time. For reproducible builds, pin the tested version (e.g. `4593.2.5`) as soon as the `flatcar-install` CLI supports it (check the `--version` flag; possibly `-V 4593.2.5`). Document the result.
 
-**Wichtig:** Pinnen im Snapshot allein genügt nicht — Flatcar aktualisiert sich zur Laufzeit selbst (update-engine). Siehe Phase E.
+**Important:** Pinning in the snapshot alone is not enough — Flatcar updates itself at runtime (update-engine). See phase E.
 
-### C.3 flatcar-install-Skript verifizieren
-Das Skript wird per `curl` von GitHub geholt. Mindestens:
+### C.3 Verify the flatcar-install script
+The script is fetched from GitHub via `curl`. At minimum:
 - `curl --fail --proto '=https' --tlsv1.2`
-- optional GPG-Verifikation (Flatcar signiert Release-Artefakte)
+- optional GPG verification (Flatcar signs release artifacts)
 
-### C.4 Doku synchron halten
-Nach dem Commit der Label-Fix in `flatcar.pkr.hcl` müssen `IMPLEMENTATION-PLAN.md` §3.2 / §4.2 angepasst werden: der manuelle `curl`-PUT-Schritt entfällt. Sonst machen Nachfolger den Schritt doppelt bzw. glauben, Label sei manuell zu setzen.
+### C.4 Keep the docs in sync
+After committing the label fix in `flatcar.pkr.hcl`, `IMPLEMENTATION-PLAN.md` §3.2 / §4.2 must be adjusted: the manual `curl` PUT step is dropped. Otherwise successors perform the step twice or believe the label must be set manually.
 
 ---
 
-## D. Manifeste härten
+## D. Harden manifests
 
-1. **`selector.matchLabels` explizit setzen** (heute `null`, Template hat `nodepool: worker`):
+1. **Set `selector.matchLabels` explicitly** (today `null`, the template has `nodepool: worker`):
    ```yaml
    selector:
      matchLabels:
        nodepool: worker
    ```
-2. **`replicas: 3`** im MachineDeployment — die Doku (1 CP + 3 Worker) ist Zielkonfiguration; Stand jetzt: 1.
-3. **MachineHealthCheck** ergänzen, damit kaputte Nodes remediert statt hängen gelassen werden:
+2. **`replicas: 3`** in the MachineDeployment — the docs (1 CP + 3 workers) are the target configuration; as of now: 1.
+3. **Add a MachineHealthCheck** so that broken nodes are remediated instead of left hanging:
    ```yaml
    apiVersion: cluster.x-k8s.io/v1beta2
    kind: MachineHealthCheck
@@ -145,22 +134,22 @@ Nach dem Commit der Label-Fix in `flatcar.pkr.hcl` müssen `IMPLEMENTATION-PLAN.
      maxUnhealthy: 40%
      nodeStartupTimeout: 20m
    ```
-   Achtung (verzahnt mit Phase E): MHC/`KubeadmControlPlane` remediert auch bei geplanten Reboots! Reboot-Fenster + großzügige Timeouts wählen (siehe IMPLEMENTATION-PLAN §8).
-4. **`.gitignore` erweitern:**
+   Note (interlinked with phase E): MHC/`KubeadmControlPlane` also remediates during planned reboots! Choose reboot windows + generous timeouts (see IMPLEMENTATION-PLAN §8).
+4. **Extend `.gitignore`:**
    ```gitignore
    packer_cache/
    crash.*.log
    *.retry
    ```
-5. **Leere Platzhalter ehrlich machen:** `scripts/` und `backups/` existieren nicht, werden aber im README gelistet — entweder anlegen oder Zeilen entfernen (oder direkt Phase F/G umsetzen).
+5. **Be honest about empty placeholders:** `scripts/` and `backups/` do not exist but are listed in the README — either create them or remove the lines (or implement phases F/G directly).
 
 ---
 
-## E. OS-Updates: Entscheidung treffen (vor Long-Lived!)
+## E. OS updates: make a decision (before long-lived!)
 
-Flatcar rebootet sich standardmäßig selbst (update-engine, stable). In einem CAPI-Cluster ist unkontrolliertes Rebooten das größte Stabilitätsrisiko. Die zwei Optionen aus `IMPLEMENTATION-PLAN.md` §8 konkretisiert:
+Flatcar reboots itself by default (update-engine, stable). In a CAPI cluster, uncontrolled rebooting is the biggest stability risk. The two options from `IMPLEMENTATION-PLAN.md` §8 made concrete:
 
-### Option A (empfohlen): kured
+### Option A (recommended): kured
 ```bash
 helm repo add kubereboot https://kubereboot.github.io/charts
 helm install kured kubereboot/kured --namespace kube-system \
@@ -171,35 +160,35 @@ helm install kured kubereboot/kured --namespace kube-system \
   --set 'extraArgs.reboot-days=Su,Mo,Tu,We,Th' \
   --set 'extraArgs.drain-grace-period=300'
 ```
-Begleitmaßnahmen (Pflicht):
-- MHC/KCP-Timeouts > max. Reboot-Dauer (siehe D.3, `nodeStartupTimeout: 20m`).
-- Nach jedem Cluster-Neubau neu installieren (wie Cilium/CCM).
+Accompanying measures (mandatory):
+- MHC/KCP timeouts > max. reboot duration (see D.3, `nodeStartupTimeout: 20m`).
+- Reinstall after every cluster rebuild (like Cilium/CCM).
 
-### Option B: Auto-Update abschalten
-Ignition um Systemd-Mask erweitern (in beiden Bootstrap-Configs):
+### Option B: turn off auto-update
+Extend Ignition with a systemd mask (in both bootstrap configs):
 ```yaml
     - content: |
         lock=false
       owner: root:root
-      path: /etc/flatcar/update.conf        # update-engine pausieren
+      path: /etc/flatcar/update.conf        # pause update-engine
       permissions: "0644"
-    # zusätzlich: locksmithd.service per Ignition maskieren (systemd.units: mask: true)
+    # additionally: mask locksmithd.service via Ignition (systemd.units: mask: true)
 ```
-Plus: OS-Rollover ausschließlich über neuen Snapshot + CAPI-Rolling (deterministisch, manuell).
+Plus: OS rollover exclusively via a new snapshot + CAPI rolling (deterministic, manual).
 
-**Entscheidung festhalten** (z. B. in README/Plan §8) — der Status quo (Floating `stable` + Self-Reboot) ist für einen verwalteten Cluster nicht tragfähig.
+**Record the decision** (e.g. in README/plan §8) — the status quo (floating `stable` + self-reboot) is not viable for a managed cluster.
 
 ---
 
 ## F. Automation & CI
 
-### F.1 Makefile/Taskfile für die dokumentierten Phasen
-Ziel: die manuellen Schritte aus `IMPLEMENTATION-PLAN.md` §3 als idempotente Targets. Beispielgerüst:
+### F.1 Makefile/Taskfile for the documented phases
+Goal: the manual steps from `IMPLEMENTATION-PLAN.md` §3 as idempotent targets. Example skeleton:
 
 ```make
 .PHONY: image kind init apply cilium ccm verify env
 env:
-	@test -n "$$HCLOUD_TOKEN" || (echo "HCLOUD_TOKEN fehlt" && exit 1)
+	@test -n "$$HCLOUD_TOKEN" || (echo "HCLOUD_TOKEN missing" && exit 1)
 
 image: env
 	packer init . && packer build .
@@ -209,7 +198,7 @@ kind: env
 	clusterctl init --core cluster-api --bootstrap kubeadm --control-plane kubeadm --infrastructure hetzner
 
 apply: kind
-	kubectl apply -f manifests/
+	helm template capi chart | kubectl apply -f -
 
 cilium:
 	helm upgrade --install cilium cilium/cilium --version 1.18.4 -n kube-system \
@@ -223,36 +212,36 @@ verify:
 	clusterctl describe cluster hetzner-cluster
 ```
 
-### F.2 CI (GitHub Actions o. ä., lightweight)
+### F.2 CI (GitHub Actions etc., lightweight)
 ```yaml
 jobs:
   validate:
     steps:
       - run: packer validate flatcar.pkr.hcl
-      - run: kubectl apply --dry-run=client -f manifests/   # oder kubeconform
-      - run: yamllint manifests/
-      - run: gitleaks detect --redact    # Schutz gegen Token/Key-Leaks
+      - run: helm template capi chart | kubectl apply --dry-run=client -f -
+      - run: yamllint chart/templates/
+      - run: gitleaks detect --redact    # protection against token/key leaks
 ```
-Pre-commit Hook (optional): `pre-commit install` mit gitleaks + yamllint + kubeconform.
+Pre-commit hook (optional): `pre-commit install` with gitleaks + yamllint + kubeconform.
 
 ---
 
-## G. Backup & Disaster Recovery (`backups/`-Platzhalter nutzen)
+## G. Backup & Disaster Recovery (use the `backups/` placeholder)
 
-1. **Etcd-Snapshots des Control-Plane** (für 1 CP die einzige Wahrheit):
-   - Per CronJob mit `etcdctl snapshot save` (Endpoint `/etc/kubernetes/pki/etcd`-Auth aus Secret) oder **Velero** inkl. Cluster-API-Objekte.
-2. **CAPI-Objekt-Backup:** Qualifikanten: Management-Cluster lokal (kind) — Backups dort sind schon „extern", aber der Cluster ist flüchtig. Manifeste sind in Git; fehlen: Secrets (`hcloud`, Bootstrap-Daten). **Kubeconfig + Secrets mit SOPS** sichern.
-3. **Wiederherstellungs-Playbook dokumentieren:** Hypothetische Szenarien (CP verloren, Management-Cluster weg, kompletter Verlust) → Schritte + erwartete Zeit. Das fehlt komplett.
+1. **Etcd snapshots of the control plane** (for 1 CP the only source of truth):
+   - Via CronJob with `etcdctl snapshot save` (endpoint `/etc/kubernetes/pki/etcd` auth from Secret) or **Velero** incl. cluster API objects.
+2. **CAPI object backup:** Qualifications: management cluster local (kind) — backups there are already "external", but the cluster is ephemeral. Manifests are in Git; missing: secrets (`hcloud`, bootstrap data). **Back up kubeconfig + secrets with SOPS**.
+3. **Document a recovery playbook:** hypothetical scenarios (CP lost, management cluster gone, complete loss) → steps + expected time. This is completely missing.
 
 ---
 
-## Quick-Checkliste (nach Priorität abarbeiten)
+## Quick checklist (work through by priority)
 
-- [ ] `.ssh/`-Key separat pro Node-Pool prüfen; Token-Handling aus Shell-History raus (A)
-- [ ] `flatcar.pkr.hcl`: Label aus `var.channel`; Release pinnen; Doku §3.2/§4.2 nachziehen (C, B)
-- [ ] Bootstrap-Configs: Version pinnen + Sysupdate nutzen (statt Snapshot-Baking); Versionen zentralisieren oder ClusterClass (B)
+- [ ] Check `.ssh/` key separately per node pool; get token handling out of shell history (A)
+- [ ] `flatcar.pkr.hcl`: label from `var.channel`; pin the release; update docs §3.2/§4.2 (C, B)
+- [ ] Bootstrap configs: pin the version + use sysupdate (instead of snapshot baking); centralize versions or ClusterClass (B)
 - [ ] MachineDeployment: `selector.matchLabels` + `replicas: 3`; MachineHealthCheck (D)
-- [ ] `.gitignore` erweitern; README-Platzhalter bereinigen (D)
-- [ ] OS-Update-Strategie entscheiden + kured (oder Mask) implementiert (E)
-- [ ] Makefile + CI-Validation (packer validate, gitleaks) (F)
-- [ ] etcd/Velero + Wiederherstellungs-Playbook (G)
+- [ ] Extend `.gitignore`; clean up README placeholders (D)
+- [ ] Decide on the OS update strategy + implement kured (or mask) (E)
+- [ ] Makefile + CI validation (packer validate, gitleaks) (F)
+- [ ] etcd/Velero + recovery playbook (G)

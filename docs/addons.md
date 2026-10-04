@@ -10,7 +10,7 @@ A CAPI `Cluster` with the label `addons: enabled` is picked up by both
 profiles:
 
 ```yaml
-# manifests/cluster.yaml
+# chart/values.yaml (clusters: map)
 metadata:
   labels:
     addons: enabled

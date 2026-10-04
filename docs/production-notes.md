@@ -1,6 +1,6 @@
 # Production notes — how this differs from a "typical" setup
 
-This PoC deliberately stays small (single kind hub, static manifests, one
+This PoC deliberately stays small (single kind hub, a Helm chart, one
 cluster). Here is what people usually change when they take this pattern
 towards production. None of it is required to make the PoC work.
 

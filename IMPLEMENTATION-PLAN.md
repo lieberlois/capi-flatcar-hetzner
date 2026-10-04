@@ -1,83 +1,83 @@
 # Flatcar + Hetzner + Cluster API — Setup Guide
 
-> Dieses Dokument ist ein **Ende-zu-Ende Setup-Guide**: Es bringt dich von einem
-> leeren Verzeichnis zu einem laufenden Kubernetes-Cluster auf **Hetzner Cloud**
-> mit **Flatcar Container Linux**, provisioniert über **Cluster API** (CAPI) mit
-> dem **Cluster API Provider Hetzner** (CAPH) und **Ignition**-Bootstrap.
+> This document is an **end-to-end setup guide**: it takes you from an
+> empty directory to a running Kubernetes cluster on **Hetzner Cloud**
+> with **Flatcar Container Linux**, provisioned via **Cluster API** (CAPI) with
+> the **Cluster API Provider Hetzner** (CAPH) and **Ignition** bootstrap.
 >
-> Jede Zeile hier wurde in dieser Session real ausgeführt und verifiziert.
-> Zielkonfiguration: 1 Control-Plane + 3 Worker (cpx22), Kubernetes **v1.36.4**,
+> Every line here was actually executed and verified in this session.
+> Target configuration: 1 control plane + 3 workers (cpx22), Kubernetes **v1.36.4**,
 > Flatcar **4757.2.1 stable**, CNI Cilium (via Sveltos).
 
 ---
 
-## 1. Zielarchitektur
+## 1. Target architecture
 
 ```
-[Lokal: kind-Cluster "capi-management"]
+[Local: kind cluster "capi-management"]
     ├─ CAPI Controllers (cluster-api v1.14.0)
     ├─ Kubeadm Bootstrap / Control-Plane (CAPBK)
     └─ CAPH (Infrastructure Hetzner v1.1.8)
-            │  provisioniert via Hetzner Cloud API
+            │  provisions via Hetzner Cloud API
             ▼
-[Hetzner Cloud (dein Projekt)]
-    ├─ LoadBalancer "hetzner-cluster-kube-apiserver-*"   ← API-Endpoint (LB, fsn1)
-    ├─ Netzwerk "hetzner-cluster" (10.0.0.0/16, Subnetz 10.0.0.0/24)
+[Hetzner Cloud (your project)]
+    ├─ LoadBalancer "hetzner-cluster-kube-apiserver-*"   ← API endpoint (LB, fsn1)
+    ├─ Network "hetzner-cluster" (10.0.0.0/16, subnet 10.0.0.0/24)
     ├─ Control-Plane Node: cpx22, Flatcar 4593.2.5 stable
     └─ Worker Nodes (3x):  cpx22, Flatcar 4593.2.5 stable
 ```
 
-> **Kubernetes-Binaries:** nicht mehr im Snapshot, sondern als offizielle
-> `kubernetes-v1.36.4-x86-64.raw` aus der
-> [sysext-bakery](https://github.com/flatcar/sysext-bakery). Ignition lädt sie
-> beim Provisioning nach `/opt/extensions/` und verlinkt
-> `/etc/extensions/kubernetes.raw`; `systemd-sysext` merged sie nach `/usr`.
+> **Kubernetes binaries:** no longer in the snapshot, but as the official
+> `kubernetes-v1.36.4-x86-64.raw` from the
+> [sysext-bakery](https://github.com/flatcar/sysext-bakery). Ignition loads them
+> during provisioning into `/opt/extensions/` and symlinks
+> `/etc/extensions/kubernetes.raw`; `systemd-sysext` merges them into `/usr`.
 
-**Glossar**
+**Glossary**
 - **CAPI**  = Cluster API (Kubernetes SIG)
 - **CAPH**  = Cluster API Provider Hetzner (`syself/cluster-api-provider-hetzner`)
-- **CAPBK** = Kubeadm Bootstrap Provider (rendert Bootstrap-Daten)
-- **Ignition** = Flatcar-Format, in dem CAPBK die Bootstrap-Daten ausliefert
-- **CCM**   = hcloud Cloud Controller Manager (providerID, Labels, LB-Services)
+- **CAPBK** = Kubeadm Bootstrap Provider (renders bootstrap data)
+- **Ignition** = Flatcar format in which CAPBK delivers the bootstrap data
+- **CCM**   = hcloud Cloud Controller Manager (providerID, labels, LB services)
 
 ---
 
-## 2. Voraussetzungen (getestet)
+## 2. Prerequisites (tested)
 
-| Tool        | Version | Hinweis |
+| Tool        | Version | Note |
 |-------------|---------|---------|
-| kind        | v0.30.0 | Management-Cluster lokal |
+| kind        | v0.30.0 | local management cluster |
 | clusterctl  | v1.12.2 | CAPI CLI |
 | kubectl     | v1.34.3+ | |
 | helm        | v4.0.4  | Cilium + hcloud-CCM |
-| hcloud      | v1.57.0 | Hetzner CLI (nutzt `HCLOUD_TOKEN`) |
-| packer      | aktuell | Flatcar-Snapshot bauen |
-| ssh-keygen  | — | SSH-Key erzeugen |
+| hcloud      | v1.57.0 | Hetzner CLI (uses `HCLOUD_TOKEN`) |
+| packer      | current | build the Flatcar snapshot |
+| ssh-keygen  | — | generate the SSH key |
 
-> Alle Tools hier via Linuxbrew/Homebrew installiert. Du brauchst außerdem einen
-> **Hetzner-API-Token** (Projekt-Token) und ein Hetzner-Konto mit einem frei
-> nutzbaren Standort `fsn1`.
+> All tools here installed via Linuxbrew/Homebrew. You also need a
+> **Hetzner API token** (project token) and a Hetzner account with a freely
+> usable location `fsn1`.
 
 ---
 
-## 3. Schritt-für-Schritt
+## 3. Step by step
 
-> **Konsistenz-Regel:** `HCLOUD_TOKEN` wird **immer als Environment-Variable**
-> gesetzt, nie als hcloud-Context angelegt (`hcloud context create` ist
-> interaktiv und dadurch für Skripte ungeeignet).
+> **Consistency rule:** `HCLOUD_TOKEN` is **always set as an environment variable**,
+> never created as an hcloud context (`hcloud context create` is
+> interactive and therefore unsuitable for scripts).
 
 ```bash
-export HCLOUD_TOKEN="<dein-hetzner-token>"
+export HCLOUD_TOKEN="<your-hetzner-token>"
 ```
 
-### 3.1 Management-Cluster (kind) + CAPI initialisieren
+### 3.1 Initialize the management cluster (kind) + CAPI
 
 ```bash
-# ⚠️ MUSS VOR kind create UND clusterctl init gesetzt sein (sonst kein Ignition!):
+# ⚠️ MUST be set BEFORE kind create AND clusterctl init (otherwise no Ignition!):
 export EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION=true
 
 kind create cluster --name capi-management --wait 5m
-# → Context "kind-capi-management"
+# → context "kind-capi-management"
 
 clusterctl init --core cluster-api --bootstrap kubeadm \
   --control-plane kubeadm --infrastructure hetzner
@@ -85,219 +85,219 @@ clusterctl init --core cluster-api --bootstrap kubeadm \
 #   control-plane-kubeadm v1.14.0, infrastructure-hetzner v1.1.8
 #   Namespaces: capi-system, capbk-system, capi-kubeadm-control-plane-system, caph-system
 
-kubectl get pods -A    # alle Controller abwarten (Ready)
+kubectl get pods -A    # wait for all controllers (Ready)
 ```
 
-### 3.2 Hetzner vorbereiten (SSH-Key + Snapshot)
+### 3.2 Prepare Hetzner (SSH key + snapshot)
 
 ```bash
-# 1) Projektlokales SSH-Key-Pair:
+# 1) Project-local SSH key pair:
 ssh-keygen -t ed25519 -N "" -f .ssh/hetzner-flatcar-key -C capi-management-hetzner
 
-# 2) Public-Key nach Hetzner hochladen:
+# 2) Upload the public key to Hetzner:
 hcloud ssh-key create --name hetzner-flatcar-key \
   --public-key-from-file .ssh/hetzner-flatcar-key.pub
 
-# 3) Vanilla-Flatcar-Snapshot bauen (NUR x86 — ARM/cax11 ist nicht in fsn1 verfügbar):
-#    Der Snapshot enthält KEINE Kubernetes-Binaries/Units; diese kommen beim
-#    Provisioning per Ignition aus der upstream sysext-bakery (siehe §1/§3.3).
-packer init .        # im Repo-Root (flatcar.pkr.hcl)
+# 3) Build the vanilla Flatcar snapshot (x86 ONLY — ARM/cax11 is not available in fsn1):
+#    The snapshot contains NO Kubernetes binaries/units; these come during
+#    provisioning via Ignition from the upstream sysext-bakery (see §1/§3.3).
+packer init .        # in the repo root (flatcar.pkr.hcl)
 packer build .
-# → Snapshot "flatcar-stable-x86", Flatcar 4593.2.5 stable
+# → snapshot "flatcar-stable-x86", Flatcar 4593.2.5 stable
 
-# 4) ⚠️ CAPH-Image-Label setzen — DER kritische Schritt!
-#    CAPH v1.1.8 sucht per LABEL "caph-image-name" (Prefix "caph-",
-#    NICHT caph.cluster.x-k8s.io/...). Snapshots haben keinen Namen.
+# 4) ⚠️ Set the CAPH image label — THE critical step!
+#    CAPH v1.1.8 looks up by LABEL "caph-image-name" (prefix "caph-",
+#    NOT caph.cluster.x-k8s.io/...). Snapshots have no name.
 SNAPSHOT_ID=$(HCLOUD_TOKEN=$HCLOUD_TOKEN hcloud image list -o json | \
   jq -r '.[] | select(.type=="snapshot") | .id')
 curl -s -X PUT "https://api.hetzner.cloud/v1/images/$SNAPSHOT_ID" \
   -H "Authorization: Bearer $HCLOUD_TOKEN" -H "Content-Type: application/json" \
   -d '{"labels":{"caph-image-name":"flatcar-stable-x86","channel":"stable","os":"flatcar"}}'
 
-# Verifikation (muss 1 ergeben):
+# Verification (must yield 1):
 curl -s "https://api.hetzner.cloud/v1/images?label_selector=caph-image-name%3D%3Dflatcar-stable-x86" \
   -H "Authorization: Bearer $HCLOUD_TOKEN" | jq '.meta.pagination.total_entries'
 ```
 
-### 3.3 Secret + Manifeste applien
+### 3.3 Secret + apply the Helm chart
 
 ```bash
 kubectl create secret generic hcloud -n default \
   --from-literal=hcloud="$HCLOUD_TOKEN" \
   --from-literal=robot-user='' --from-literal=robot-password=''
 
-kubectl apply -f manifests/
+bash scripts/05-apply.sh        # helm template chart | kubectl apply -f -
 ```
 
-**Manifeste (statisch, kein Helm-Chart):**
+**Helm chart (`chart/`):** the Kubernetes version and all names are templated;
+`values.yaml` holds a map of clusters.
 
 ```
-manifests/
-├── cluster.yaml                 # Cluster (v1beta2) + controlPlaneRef/infrastructureRef
-├── hcloud-cluster.yaml          # HetznerCluster (v1beta1) — Netzwerk, LB, Region, SSH-Keys
-├── machine-template.yaml        # HCloudMachineTemplate CP
-├── worker-machine-template.yaml # HCloudMachineTemplate Worker
-├── control-plane.yaml           # KubeadmControlPlane (v1beta2, format: ignition)
-└── worker-deployment.yaml       # KubeadmConfigTemplate + MachineDeployment (3 Replicas)
+chart/
+├── Chart.yaml
+├── values.yaml                  # per-cluster namespace + per-role kubernetesVersion (clusters: map)
+└── templates/
+    ├── cluster.yaml             # Cluster + HetznerCluster
+    ├── control-plane.yaml       # HCloudMachineTemplate (CP) + KubeadmControlPlane
+    └── workers.yaml             # HCloudMachineTemplate (worker) + KubeadmConfigTemplate + MachineDeployment
 ```
 
 ### 3.4 Addons: Sveltos (Cilium + hcloud-CCM)
 
-CNI und CCM werden **deklarativ** von **Sveltos** im Hub-Cluster auf alle
-Workload-Cluster mit Label `addons: enabled` verteilt — kein manuelles
-`helm install` in den Workload-Cluster. Details: `docs/addons.md`.
+CNI and CCM are distributed **declaratively** by **Sveltos** in the hub cluster to all
+workload clusters with the label `addons: enabled` — no manual
+`helm install` into the workload cluster. Details: `docs/addons.md`.
 
 ```bash
-# Sveltos im Hub installieren (Mode 2, kein Agent im Workload):
+# Install Sveltos in the hub (Mode 2, no agent in the workload):
 bash scripts/07-install-sveltos.sh
 
-# Credentials-ConfigMap (aus .env) rendern + ClusterProfiles applien:
+# Render the credentials ConfigMap (from .env) + apply the ClusterProfiles:
 bash scripts/08-apply-addons.sh
 
 # Status:
 kubectl get clusterprofiles,sveltoscluster,clustersummary -A
 sveltosctl show addons            # optional
 
-# Workload prüfen:
+# Check the workload:
 clusterctl get kubeconfig hetzner-cluster > hetzner-cluster.kubeconfig
 KUBECONFIG=$PWD/hetzner-cluster.kubeconfig kubectl get nodes -o wide
 ```
 
-Sveltos deployt Cilium zuerst und den hcloud-CCM danach (`dependsOn`) — die
-Nodes werden dadurch Ready, ohne manuellen Eingriff.
+Sveltos deploys Cilium first and the hcloud-CCM afterwards (`dependsOn`) — the
+nodes thereby become Ready without manual intervention.
 
-### 3.5 Versionen upgraden (falls gewünscht)
+### 3.5 Upgrading versions (if desired)
 
-KCP erlaubt pro Update nur **+1 Minor-Version** (z. B. v1.34 → v1.35 → v1.36).
-Version + Binary-URLs in `control-plane.yaml` und `worker-deployment.yaml`
-pflegen und `kubectl apply -f manifests/` ausführen — KCP macht den Rest
-(Rolling Update der Machines).
-
----
-
-## 4. Kritische Fallstricke (aus der Praxis, bitte lesen)
-
-1. **`EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION=true`** muss VOR `kind create` und
-   `clusterctl init` exportiert sein, sonst kein Ignition-Format.
-2. **CAPH-Image-Label = `caph-image-name`**, nicht `caph.cluster.x-k8s.io/image-name`.
-   CAPH v1.1.8 baut den Key aus `NameHetznerProviderPrefix = "caph-"` + `"image-name"`
-   (Quelle: `api/v1beta1/tags.go`, Lookup: `pkg/services/hcloud/server/server.go:1987`).
-   Ein falscher Label-Key resultiert in `no image found` trotz vorhandenem Snapshot.
-3. **HCloudMachineTemplate ist immutable** → jede Änderung = Template löschen + neu
-   anlegen. Achtung: bereits erzeugte Machines tragen die alte Config eingebettet —
-   alte Machines löschen, damit KCP/MD sie neu bauen.
-4. **SSH-Key `users:` Block** — Hetzner injiziert bei Custom-Snapshots keine Keys in
-   Flatcar. Ohne `users.sshAuthorizedKeys` im `kubeadmConfigSpec` ist kein SSH-Debug.
-5. **kubelet `cloud-provider=external`** nativ über `kubeletExtraArgs:` (v1beta2 →
-   `name`/`value`-Liste) setzen, damit der hcloud-CCM providerID + Labels
-   übernehmen kann. kubeadm schreibt das nach `/var/lib/kubelet/kubeadm-flags.env`,
-   das die upstream `10-kubeadm.conf` der Sysext bereits einliest.
-6. **Cilium**: `kubeProxyReplacement` muss explizit `false` sein, sonst scheitert die
-   Helm-Inst-Validation an der ConfigMap.
-7. **API-Gruppen**: Cluster/KCP/MD → `v1beta2`; CAPH → `v1beta1`.
-   Refs nutzen `apiGroup:` + `kind:` + `name:` (NICHT `apiVersion`).
-8. **Region `fsn1`** (nicht `fsn`); `spec.controlPlaneEndpoint: {host:"", port:443}`
-   nötig, damit CAPH den LoadBalancer erstellt.
+KCP allows only **+1 minor version** per update (e.g. v1.34 → v1.35 → v1.36).
+Set `kubernetesVersion` in `chart/values.yaml` (the sysext URLs are derived from it)
+and run `bash scripts/05-apply.sh` — KCP does the rest
+(rolling update of the Machines).
 
 ---
 
-## 5. Troubleshooting-Checkliste
+## 4. Critical pitfalls (from practice, please read)
 
-| Symptom | Ursache | Fix |
+1. **`EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION=true`** must be exported BEFORE `kind create` and
+   `clusterctl init`, otherwise no Ignition format.
+2. **CAPH image label = `caph-image-name`**, not `caph.cluster.x-k8s.io/image-name`.
+   CAPH v1.1.8 builds the key from `NameHetznerProviderPrefix = "caph-"` + `"image-name"`
+   (source: `api/v1beta1/tags.go`, lookup: `pkg/services/hcloud/server/server.go:1987`).
+   A wrong label key results in `no image found` despite an existing snapshot.
+3. **HCloudMachineTemplate is immutable** → every change = delete the template + create it
+   anew. Note: already-created Machines carry the old config embedded —
+   delete the old Machines so that KCP/MD rebuilds them.
+4. **SSH key `users:` block** — for custom snapshots, Hetzner injects no keys into
+   Flatcar. Without `users.sshAuthorizedKeys` in the `kubeadmConfigSpec` there is no SSH debug.
+5. **kubelet `cloud-provider=external`** set natively via `kubeletExtraArgs:` (v1beta2 →
+   `name`/`value` list), so that the hcloud-CCM can take over providerID + labels.
+   kubeadm writes this to `/var/lib/kubelet/kubeadm-flags.env`,
+   which the upstream `10-kubeadm.conf` of the sysext already reads.
+6. **Cilium**: `kubeProxyReplacement` must explicitly be `false`, otherwise the
+   Helm install validation fails on the ConfigMap.
+7. **API groups**: Cluster/KCP/MD → `v1beta2`; CAPH → `v1beta1`.
+   Refs use `apiGroup:` + `kind:` + `name:` (NOT `apiVersion`).
+8. **Region `fsn1`** (not `fsn`); `spec.controlPlaneEndpoint: {host:"", port:443}`
+   is required so that CAPH creates the LoadBalancer.
+
+---
+
+## 5. Troubleshooting checklist
+
+| Symptom | Cause | Fix |
 |---------|---------|-----|
-| `no image found with name <ID>` | `imageName` war Snapshot-ID statt Label-Wert | `imageName: flatcar-stable-x86` + Label `caph-image-name` setzen |
-| `no image found with name flatcar-stable-x86` trotz Label | Label-Key falsch | Label-Key `caph-image-name` verwenden (NICHT `caph.cluster.x-k8s.io/...`) |
-| `HCloudMachineTemplate.Spec is immutable` | Spec nicht änderbar | löschen + neu anlegen, alte Machines neu bauen |
-| `strict decoding error: ... apiVersion` | Refs mit `apiVersion` | `apiGroup:` statt `apiVersion` |
-| `Unsupported value: "fsn"` | Location-Format falsch | `fsn1` |
-| `waiting for control-plane endpoint` (Loop) | `spec.controlPlaneEndpoint` fehlt | `{host:"", port:443}` → LB wird erstellt |
-| kind liefert kein Ignition | Flag nicht vor clusterctl init gesetzt | `export EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION=true` |
-| Node `NotReady` / `cni plugin not initialized` | kein CNI | Sveltos `ClusterProfile/cilium` prüfen (`kubeProxyReplacement=false`) |
-| Node Ready, aber CAPI `Machine Ready=Unknown` | Node.providerID fehlt | Sveltos `ClusterProfile/hcloud-ccm` prüfen + kubelet `cloud-provider=external`; Notfall: `kubectl patch node ... -p '{"spec":{"providerID":"hcloud://<serverId>"}}'` |
-| SSH `Permission denied` trotz Key in Hetzner | Flatcar bekommt Keys nicht injiziert | `users:` mit `sshAuthorizedKeys` im `kubeadmConfigSpec` |
-| CP-Machine hängt in `Deleting` | alte Machine, CAPH-Finalizer | CAPH-Controller neu starten, ggf. Machine-Finalizer prüfen |
+| `no image found with name <ID>` | `imageName` was the snapshot ID instead of the label value | set `imageName: flatcar-stable-x86` + label `caph-image-name` |
+| `no image found with name flatcar-stable-x86` despite label | wrong label key | use label key `caph-image-name` (NOT `caph.cluster.x-k8s.io/...`) |
+| `HCloudMachineTemplate.Spec is immutable` | spec not modifiable | delete + recreate, rebuild old Machines |
+| `strict decoding error: ... apiVersion` | refs with `apiVersion` | `apiGroup:` instead of `apiVersion` |
+| `Unsupported value: "fsn"` | wrong location format | `fsn1` |
+| `waiting for control-plane endpoint` (loop) | `spec.controlPlaneEndpoint` missing | `{host:"", port:443}` → LB is created |
+| kind does not deliver Ignition | flag not set before clusterctl init | `export EXP_KUBEADM_BOOTSTRAP_FORMAT_IGNITION=true` |
+| Node `NotReady` / `cni plugin not initialized` | no CNI | check Sveltos `ClusterProfile/cilium` (`kubeProxyReplacement=false`) |
+| Node Ready, but CAPI `Machine Ready=Unknown` | Node.providerID missing | check Sveltos `ClusterProfile/hcloud-ccm` + kubelet `cloud-provider=external`; emergency: `kubectl patch node ... -p '{"spec":{"providerID":"hcloud://<serverId>"}}'` |
+| SSH `Permission denied` despite key in Hetzner | Flatcar does not get keys injected | `users:` with `sshAuthorizedKeys` in the `kubeadmConfigSpec` |
+| CP Machine stuck in `Deleting` | old Machine, CAPH finalizer | restart the CAPH controller, check the Machine finalizer if needed |
 
 ---
 
-## 6. Aktueller Stand (nach Neubau, v1.36.4)
+## 6. Current state (after rebuild, v1.36.4)
 
-| Objekt | Status | Bemerkung |
+| Object | Status | Note |
 |--------|--------|-----------|
-| kind Cluster `capi-management` | ✔ Ready | Management-Cluster |
-| CAPI/CAPH Provider | ✔ Ready | cluster-api/bk/cp v1.14.0, infra v1.1.8 |
-| SSH-Key Hetzner | ✔ `hetzner-flatcar-key` | projektlokal `.ssh/hetzner-flatcar-key` |
-| Flatcar Snapshot | ✔ `flatcar-stable-x86` | Label `caph-image-name` gesetzt |
-| Netzwerk `hetzner-cluster` | ✔ | 10.0.0.0/16, Subnetz 10.0.0.0/24 |
-| LoadBalancer (API) | ✔ | fsn1, Port 443 |
+| kind cluster `capi-management` | ✔ Ready | management cluster |
+| CAPI/CAPH provider | ✔ Ready | cluster-api/bk/cp v1.14.0, infra v1.1.8 |
+| SSH key Hetzner | ✔ `hetzner-flatcar-key` | project-local `.ssh/hetzner-flatcar-key` |
+| Flatcar snapshot | ✔ `flatcar-stable-x86` | label `caph-image-name` set |
+| Network `hetzner-cluster` | ✔ | 10.0.0.0/16, subnet 10.0.0.0/24 |
+| LoadBalancer (API) | ✔ | fsn1, port 443 |
 | Cluster CR | ✔ Provisioned, init=True | |
-| Control-Plane | Neubau | `hetzner-control-plane-b44mg` (Server läuft) |
-| Worker (3x) | Neubau | `hetzner-worker-md-xr7sf-*` (Server laufen) |
+| Control plane | Rebuild | `hetzner-control-plane-b44mg` (server running) |
+| Workers (3x) | Rebuild | `hetzner-worker-md-xr7sf-*` (servers running) |
 | Kubernetes | **v1.36.4** | upstream `kubernetes-v1.36.4-x86-64.raw` (sysext-bakery) |
-| CNI | ✔ Cilium 1.18.4 | via Sveltos `ClusterProfile/cilium` (Abschnitt 3.4) |
-| CCM | ✔ hcloud-cloud-controller-manager | via Sveltos `ClusterProfile/hcloud-ccm`; setzt providerID + Labels |
-| Nodes | ✔ alle Ready | 1 CP + 3 Worker, v1.36.4 |
-| Kubeconfig | ✔ `hetzner-cluster.kubeconfig` | im Repo-Root, gitignored |
+| CNI | ✔ Cilium 1.18.4 | via Sveltos `ClusterProfile/cilium` (section 3.4) |
+| CCM | ✔ hcloud-cloud-controller-manager | via Sveltos `ClusterProfile/hcloud-ccm`; sets providerID + labels |
+| Nodes | ✔ all Ready | 1 CP + 3 workers, v1.36.4 |
+| Kubeconfig | ✔ `hetzner-cluster.kubeconfig` | in the repo root, gitignored |
 
-> Nach einem vollständigen Cluster-Neubau (Löschen aller CAPI-Objekte) werden
-> CNI + CCM (Abschnitt 3.4) von Sveltos automatisch im frischen Workload-Cluster
-> installiert, sobald dieser das Profil-Label `addons: enabled` trägt. Danach
-> werden alle Nodes `Ready` (inkl. korrekter providerID durch den CCM — kein manuelles
-> Patch mehr nötig). Scale-Down/Up über das MachineDeployment (replicas) wird von
-> CAPI mit Drain/Cordon ausgeführt — die Nodes zeigen dabei kurzfristig
-> `Ready,SchedulingDisabled`.
-
----
-
-## 7. Aufgeräumt / Bekanntes
-
-- Packer-Template ist auf **x86** reduziert (ARM/cax11 existiert nicht in `fsn1`).
-- `backups/` und `scripts/` sind Platzhalter (leer).
-- `.gitignore` ignoriert `.ssh/`, `*.kubeconfig`, `.env` — Tokens und Keys landen
-  nie im Repo.
+> After a full cluster rebuild (deleting all CAPI objects), CNI + CCM (section 3.4)
+> are installed automatically by Sveltos in the fresh workload cluster
+> as soon as it carries the profile label `addons: enabled`. Afterwards
+> all nodes become `Ready` (including the correct providerID via the CCM — no manual
+> patch needed anymore). Scale-down/up via the MachineDeployment (replicas) is
+> performed by CAPI with drain/cordon — the nodes briefly show
+> `Ready,SchedulingDisabled` during this.
 
 ---
 
-## 8. Further Outlook — Automatische OS-Updates mit kured (und CAPI-Vereinbarkeit)
+## 7. Cleaned up / known issues
 
-Flatcar aktualisiert sich standardmäßig **selbst** (update-engine, Kanal `stable`,
-in-place, inkl. eigenständigem Reboot). Für einen von CAPI verwalteten Cluster ist
-das unkontrollierte Rebooten unerwünscht. Zwei saubere Optionen:
+- The Packer template is reduced to **x86** (ARM/cax11 does not exist in `fsn1`).
+- `backups/` and `scripts/` are placeholders (empty).
+- `.gitignore` ignores `.ssh/`, `*.kubeconfig`, `.env` — tokens and keys never end up
+  in the repo.
 
-**Option A (empfohlen): update-engine aktiv + kured für sichere Reboots**
-- `update-engine` bleibt aktiv und lädt/staged OS-Updates (stable-Kanal).
-- **kured** (DaemonSet im Workload-Cluster, CNCF Sandbox) überwacht den
-  Reboot-Sentinel, nimmt einen **cluster-weiten Lock** (nur 1 Node rebootet
-  gleichzeitig), **cordons + drains** den Node, rebootet und uncordont danach.
-- Die Kubernetes-Binaries liegen in der upstream sysext-bakery-Erweiterung
-  (`/opt/extensions/kubernetes/…raw`, per Ignition geladen) und werden von
-  Flatcars `systemd-sysext` nach `/usr` gemerged → Node kommt nach dem Reboot
-  sauber in den Cluster zurück.
-- Einrichtung: `helm install kured kubereboot/kured` (bzw. Helm-Repo) mit
-  `--set` auf Sentinel, Fenster (`--start-time/--end-time`), und Control-Plane-
-  Tolerations.
+---
 
-**Option B: Auto-Update abschalten, OS-Version über Snapshot rollen**
-- `update-engine` + `locksmithd` im Ignition maskieren (`systemctl mask ...`).
-- Neuen Flatcar-Snapshot mit Zielversion per `packer build` bauen (gleiches Label),
-  `HCloudMachineTemplate` neu anlegen (immutable → löschen+neu), KCP/MD rollen.
-- Deterministisch, aber manueller — kein automatischer Patch-Flow.
+## 8. Further Outlook — automatic OS updates with kured (and CAPI compatibility)
 
-**Vereinbarkeit kured ↔ Cluster API:**
-- kured läuft **im Workload-Cluster** (wie Cilium/CCM) — das Management-Cluster und
-  die CAPI-Controller sind davon unberührt.
-- Ein Reboot **ändert die Machine-Identität nicht**: Die Node kommt mit derselben
-  `providerID` zurück, kubelet registriert sich neu — CAPI sieht die Machine
-  kurzzeitig `NotReady`, danach wieder `Ready`. **Kein Machine-Recreate**, kein
-  Konflikt mit KCP/MD-Reconciles.
-- **Achtung:** `MachineHealthCheck`/KCP-Health-Checks melden während eines Reboots
-  kurz `NotHealthy`/etcd-Timeouts. Reboot-Fenster + großzügige `nodeStartupTimeout`
-  setzen, damit CAPI den Reboot nicht als Unhealthy remediert (sonst Deleting+Neubau).
-- Control-Plane-Nodes brauchen kured-Tolerations (`node-role.kubernetes.io/control-plane`)
-  und ggf. `--drain-grace-period` — sonst werden CP-Nodes nicht getoucht.
-- Nach einem **Cluster-Neubau** muss kured (wie Cilium/CCM, Abschnitt 3.4) neu
-  installiert werden.
-- OS-Version-Drift: kured aktualisiert die **OS-Patch-Level** in-place. Die
-  **Kubernetes-Version** bleibt davon unabhängig über die Manifeste
-  (Sysext-Version in der Ignition-Config + `spec.version`) gesteuert.
-- Für **Major-OS-Upgrades** (z. B. Flatcar-Channel-/Milestone-Wechsel) ist
-  weiterhin Option B (Snapshot + CAPI-Rolling) der saubere Weg.
+Flatcar updates **itself** by default (update-engine, `stable` channel,
+in-place, including its own reboot). For a CAPI-managed cluster,
+uncontrolled rebooting is undesirable. Two clean options:
+
+**Option A (recommended): update-engine active + kured for safe reboots**
+- `update-engine` stays active and downloads/stages OS updates (stable channel).
+- **kured** (DaemonSet in the workload cluster, CNCF Sandbox) monitors the
+  reboot sentinel, takes a **cluster-wide lock** (only 1 node reboots
+  at a time), **cordons + drains** the node, reboots and uncordons it afterwards.
+- The Kubernetes binaries live in the upstream sysext-bakery extension
+  (`/opt/extensions/kubernetes/…raw`, loaded via Ignition) and are merged into `/usr`
+  by Flatcar's `systemd-sysext` → the node returns cleanly to the cluster
+  after the reboot.
+- Setup: `helm install kured kubereboot/kured` (or Helm repo) with
+  `--set` for the sentinel, window (`--start-time/--end-time`), and control-plane
+  tolerations.
+
+**Option B: turn off auto-update, roll the OS version via snapshot**
+- Mask `update-engine` + `locksmithd` in Ignition (`systemctl mask ...`).
+- Build a new Flatcar snapshot with the target version via `packer build` (same label),
+  recreate the `HCloudMachineTemplate` (immutable → delete+recreate), roll KCP/MD.
+- Deterministic, but manual — no automatic patch flow.
+
+**Compatibility kured ↔ Cluster API:**
+- kured runs **in the workload cluster** (like Cilium/CCM) — the management cluster and
+  the CAPI controllers are unaffected.
+- A reboot **does not change the machine identity**: the node comes back with the same
+  `providerID`, kubelet re-registers — CAPI sees the Machine
+  briefly as `NotReady`, then `Ready` again. **No machine recreate**, no
+  conflict with KCP/MD reconciles.
+- **Note:** `MachineHealthCheck`/KCP health checks report
+  briefly `NotHealthy`/etcd timeouts during a reboot. Set reboot windows + generous `nodeStartupTimeout`
+  so that CAPI does not remediate the reboot as unhealthy (otherwise deleting+rebuild).
+- Control-plane nodes need kured tolerations (`node-role.kubernetes.io/control-plane`)
+  and possibly `--drain-grace-period` — otherwise CP nodes are not touched.
+- After a **cluster rebuild**, kured must be reinstalled (like Cilium/CCM, section 3.4).
+- OS version drift: kured updates the **OS patch level** in-place. The
+  **Kubernetes version** remains independently controlled via `kubernetesVersion`
+  in the Helm chart (templated into `spec.version` and the Ignition sysext URLs).
+- For **major OS upgrades** (e.g. Flatcar channel/milestone changes), Option B
+  (snapshot + CAPI rolling) remains the clean path.

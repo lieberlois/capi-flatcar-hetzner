@@ -11,7 +11,7 @@ plane itself or supplies a secret. Everything **on the workload cluster**
 | 3 | `packer build` (vanilla Flatcar snapshot) + label | Hetzner has no official Flatcar image; CAPH selects by `caph-image-name` |
 | 4 | `bash scripts/07-install-sveltos.sh` | Installs the addon controller into the hub |
 | 5 | `bash scripts/08-apply-addons.sh` | Renders the credential ConfigMap from `.env` and applies the ClusterProfiles |
-| 6 | `kubectl apply -f manifests/` | Creates the workload `Cluster` (declarative) |
+| 6 | `bash scripts/05-apply.sh` | Renders the Helm chart (`chart/`) and creates the workload `Cluster` |
 
 ## Environment
 
