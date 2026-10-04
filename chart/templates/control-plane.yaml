@@ -1,7 +1,6 @@
 {{- range $name, $c := .Values.clusters }}
 {{- $ns := $c.namespace | default "default" }}
 {{- $v := $c.controlPlane.kubernetesVersion | default $c.kubernetesVersion }}
-{{- $minor := regexReplaceAll "\\.[0-9]+$" $v "" }}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
@@ -45,33 +44,19 @@ spec:
               hard: false
               target: /opt/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
             files:
-            - path: /etc/sysupdate.kubernetes.d/kubernetes-{{ $minor }}.conf
-              mode: 0644
-              contents:
-                remote:
-                  url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-{{ $minor }}.conf
-            - path: /etc/sysupdate.d/noop.conf
-              mode: 0644
-              contents:
-                remote:
-                  url: https://extensions.flatcar.org/extensions/noop.conf
             - path: /opt/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
               contents:
                 remote:
                   url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
           systemd:
             units:
-            - name: systemd-sysupdate.service
-              dropins:
-              - name: kubernetes.conf
-                contents: |
-                  [Service]
-                  ExecStartPre=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes"
-                  ExecStartPre=/usr/lib/systemd/systemd-sysupdate -C kubernetes update
-                  ExecStartPost=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes-new"
-                  ExecStartPost=/usr/bin/sh -c "if ! cmp --silent /tmp/kubernetes /tmp/kubernetes-new; then touch /run/reboot-required; fi"
-            - name: systemd-sysupdate.timer
-              enabled: false
+            # Reprovision-only update strategy: disable Flatcar's self-update and
+            # reboot machinery. OS + Kubernetes updates are rolled by CAPI (new
+            # nodes), not applied in place.
+            - name: update-engine.service
+              mask: true
+            - name: locksmithd.service
+              mask: true
             - name: kubeadm.service
               dropins:
               - name: 10-flatcar.conf

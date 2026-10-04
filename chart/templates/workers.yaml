@@ -2,7 +2,6 @@
 {{- $ns := $c.namespace | default "default" }}
 {{- if $c.workers }}
 {{- $v := $c.workers.kubernetesVersion | default $c.kubernetesVersion }}
-{{- $minor := regexReplaceAll "\\.[0-9]+$" $v "" }}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HCloudMachineTemplate
@@ -39,33 +38,17 @@ spec:
                 hard: false
                 target: /opt/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
               files:
-              - path: /etc/sysupdate.kubernetes.d/kubernetes-{{ $minor }}.conf
-                mode: 0644
-                contents:
-                  remote:
-                    url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-{{ $minor }}.conf
-              - path: /etc/sysupdate.d/noop.conf
-                mode: 0644
-                contents:
-                  remote:
-                    url: https://extensions.flatcar.org/extensions/noop.conf
               - path: /opt/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
                 contents:
                   remote:
                     url: https://extensions.flatcar.org/extensions/kubernetes/kubernetes-{{ $v }}-x86-64.raw
             systemd:
               units:
-              - name: systemd-sysupdate.service
-                dropins:
-                - name: kubernetes.conf
-                  contents: |
-                    [Service]
-                    ExecStartPre=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes"
-                    ExecStartPre=/usr/lib/systemd/systemd-sysupdate -C kubernetes update
-                    ExecStartPost=/usr/bin/sh -c "readlink --canonicalize /etc/extensions/kubernetes.raw > /tmp/kubernetes-new"
-                    ExecStartPost=/usr/bin/sh -c "if ! cmp --silent /tmp/kubernetes /tmp/kubernetes-new; then touch /run/reboot-required; fi"
-              - name: systemd-sysupdate.timer
-                enabled: false
+              # Reprovision-only update strategy (see control-plane.yaml).
+              - name: update-engine.service
+                mask: true
+              - name: locksmithd.service
+                mask: true
               - name: kubeadm.service
                 dropins:
                 - name: 10-flatcar.conf
@@ -110,5 +93,25 @@ spec:
         apiGroup: infrastructure.cluster.x-k8s.io
         kind: HCloudMachineTemplate
         name: {{ $name }}-worker
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineHealthCheck
+metadata:
+  name: {{ $name }}-worker-mhc
+  namespace: {{ $ns }}
+spec:
+  clusterName: {{ $name }}
+  selector:
+    matchLabels:
+      nodepool: worker
+  unhealthyConditions:
+  - type: Ready
+    status: Unknown
+    timeout: 300s
+  - type: Ready
+    status: "False"
+    timeout: 300s
+  maxUnhealthy: 100%
+  nodeStartupTimeout: 20m
 {{- end }}
 {{- end }}
