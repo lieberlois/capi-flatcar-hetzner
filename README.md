@@ -1,21 +1,43 @@
 # capi-flatcar-hetzner
 
-Cluster API Provider Hetzner (CAPH) PoC: Kubernetes cluster on Hetzner Cloud
-with **Flatcar Container Linux** (Ignition) and **Cluster API**.
+**Kubernetes on [Flatcar Container Linux](https://www.flatcar.org/) in Hetzner
+Cloud, provisioned with [Cluster API](https://cluster-api.sigs.k8s.io/) (CAPI).**
 
-The Kubernetes stack does **not** come from manually baked binaries or
-systemd drop-ins, but from the official
-[Flatcar `sysext-bakery`](https://github.com/flatcar/sysext-bakery)
-`kubernetes-*.raw` extension. It is loaded during provisioning via Ignition
-and merged into `/usr` by Flatcar's `systemd-sysext`.
+A small, reproducible **reference setup** — the point being that the Kubernetes
+binaries are *not* baked into a custom image and addons are *not* installed by
+hand:
+
+- **Kubernetes comes from Flatcar.** `kubelet` / `kubeadm` / `kubectl` (and CNI
+  plugins) are delivered as the upstream
+  [`flatcar/sysext-bakery`](https://github.com/flatcar/sysext-bakery)
+  `kubernetes-<version>.raw`, fetched by **Ignition** at provisioning time and
+  merged into `/usr` by **`systemd-sysext`**. No custom-baked Kubernetes, no
+  `/opt/bin`, no hand-written systemd drop-ins.
+- **Infrastructure:** Hetzner Cloud via
+  [CAPH](https://github.com/syself/cluster-api-provider-hetzner).
+- **Addons are declarative:** **Cilium** (CNI) and the **hcloud CCM** are
+  delivered by [Sveltos](https://projectsveltos.io/) from the management
+  cluster — no manual `helm install` into workload clusters.
+- **Clusters are a Helm chart:** a map of clusters in `chart/values.yaml`, with a
+  per-cluster namespace and a per-role Kubernetes version (including
+  control-plane-only **single-node** clusters).
+- **Updates are reprovision-based:** Flatcar's self-update/reboot is masked; bump
+  the version and CAPI rolls fresh nodes (KCP surge preserves etcd).
+
+New here? Start with [`docs/`](docs/README.md): architecture, bootstrap, addons,
+production notes, and further work.
 
 ## Status
 
-- PoC: 1 control plane + 3 workers, Kubernetes **v1.36.5**
-- Stack: CAPH (Hetzner), Cilium (CNI), hcloud-cloud-controller-manager
-- Kubernetes binaries: upstream `kubernetes-v1.36.5-x86-64.raw` (sysext-bakery)
-- The PoC cluster has since been deleted — the manifests, scripts and
-  the setup guide are ready for a rebuild.
+PoC / reference implementation — **verified end-to-end**:
+
+- provisions a Hetzner workload cluster **and** a control-plane-only
+  **single-node** cluster (Flatcar, `cpx22`);
+- **Cilium**, **kube-proxy**, and the **hcloud CCM** come up automatically via
+  Sveltos (nodes `Ready`, `providerID` set);
+- **upgrade tested** (`v1.36.5 → v1.37.1`) via KCP's surge rollout — etcd
+  preserved;
+- Kubernetes version: **`v1.37.1`** (from `kubernetes-v1.37.1-x86-64.raw`).
 
 ## Structure
 
@@ -36,7 +58,7 @@ and merged into `/usr` by Flatcar's `systemd-sysext`.
    - A sysctl file (`/etc/sysctl.d/99-kubernetes.conf`) sets the Kubernetes
      networking prerequisites (`bridge-nf-call-iptables`, `ip_forward`).
    - `ignition.containerLinuxConfig.additionalConfig` loads the
-     official `kubernetes-v1.36.5-x86-64.raw` over HTTP to
+     official `kubernetes-v1.37.1-x86-64.raw` over HTTP to
      `/opt/extensions/kubernetes/` and symlinks `/etc/extensions/kubernetes.raw`.
    - Flatcar's `systemd-sysext` merges `/usr/bin/kubelet`,
      `/usr/bin/kubeadm`, `/usr/bin/kubectl`, CNI plugins and
