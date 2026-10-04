@@ -27,14 +27,14 @@ clusters:
       cidrBlock: 10.0.0.0/16
       subnetCidrBlock: 10.0.0.0/24
     # Optional cluster-wide default; can be overridden per role below.
-    kubernetesVersion: v1.36.4
+    kubernetesVersion: v1.36.5
     controlPlane:
-      kubernetesVersion: v1.36.4
+      kubernetesVersion: v1.36.5
       replicas: 1
       machineType: cpx22
       imageName: flatcar-stable-x86
     workers:
-      kubernetesVersion: v1.36.4
+      kubernetesVersion: v1.36.5
       replicas: 1
       failureDomain: fsn1
       machineType: cpx22
@@ -52,9 +52,9 @@ clusters:
       enabled: true
       cidrBlock: 10.1.0.0/16
       subnetCidrBlock: 10.1.0.0/24
-    kubernetesVersion: v1.36.4
+    kubernetesVersion: v1.36.5
     controlPlane:
-      kubernetesVersion: v1.36.4
+      kubernetesVersion: v1.36.5
       replicas: 1
       allowScheduling: true # single node -> allow workloads on the control plane
       machineType: cpx22
