@@ -1,0 +1,36 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: hetzner-cluster
+  namespace: default
+  labels:
+    # Opts the workload into the Sveltos addon ClusterProfiles.
+    addons: enabled
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 10.244.0.0/16
+    services:
+      cidrBlocks:
+      - 10.245.0.0/16
+  topology:
+    # The Kubernetes version is the single source of truth: Cluster API expands it
+    # into spec.version AND (via the ClusterClass patches) the Ignition sysext URLs.
+    version: v1.36.4
+    classRef:
+      name: flatcar-hetzner
+    controlPlane:
+      replicas: 1
+    workers:
+      machineDeployments:
+      - class: hcloud-worker
+        name: md-0
+        replicas: 1
+        failureDomain: fsn1
+    variables:
+    - name: region
+      value: fsn1
+    - name: hcloudSSHKeyName
+      value:
+      - name: hetzner-flatcar-key
