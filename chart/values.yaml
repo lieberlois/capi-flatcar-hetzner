@@ -10,6 +10,10 @@ sshAuthorizedKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgPVuRlet/qJl4KsKBI26n4l
 # Version resolution per role: <role>.kubernetesVersion, falling back to the
 # cluster's kubernetesVersion. The value is templated into spec.version AND the
 # Ignition sysext URLs for that role.
+#
+# A cluster with no `workers:` block is control-plane only.
+# controlPlane.allowScheduling: true removes the control-plane NoSchedule taint
+# (for single-node clusters that must run workloads).
 clusters:
   hetzner-cluster:
     namespace: default
@@ -33,5 +37,25 @@ clusters:
       kubernetesVersion: v1.36.4
       replicas: 1
       failureDomain: fsn1
+      machineType: cpx22
+      imageName: flatcar-stable-x86
+
+  # Second cluster: control-plane only, single node, in its own namespace.
+  test-single-node:
+    namespace: test-single-node
+    region: fsn1
+    sshKeyName: hetzner-flatcar-key
+    addons: true
+    podsCidr: 10.246.0.0/16
+    servicesCidr: 10.247.0.0/16
+    network:
+      enabled: true
+      cidrBlock: 10.1.0.0/16
+      subnetCidrBlock: 10.1.0.0/24
+    kubernetesVersion: v1.36.4
+    controlPlane:
+      kubernetesVersion: v1.36.4
+      replicas: 1
+      allowScheduling: true # single node -> allow workloads on the control plane
       machineType: cpx22
       imageName: flatcar-stable-x86

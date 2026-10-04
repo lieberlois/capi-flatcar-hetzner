@@ -1,5 +1,6 @@
 {{- range $name, $c := .Values.clusters }}
 {{- $ns := $c.namespace | default "default" }}
+{{- if $c.workers }}
 {{- $v := $c.workers.kubernetesVersion | default $c.kubernetesVersion }}
 {{- $minor := regexReplaceAll "\\.[0-9]+$" $v "" }}
 ---
@@ -109,4 +110,5 @@ spec:
         apiGroup: infrastructure.cluster.x-k8s.io
         kind: HCloudMachineTemplate
         name: {{ $name }}-worker
+{{- end }}
 {{- end }}

@@ -83,6 +83,9 @@ spec:
       - addon/kube-proxy
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
+        {{- if $c.controlPlane.allowScheduling }}
+        taints: []
+        {{- end }}
         ignorePreflightErrors:
         - FileContent--proc-sys-net-bridge-bridge-nf-call-iptables
         kubeletExtraArgs:
@@ -93,6 +96,9 @@ spec:
       - addon/kube-proxy
       nodeRegistration:
         criSocket: /run/containerd/containerd.sock
+        {{- if $c.controlPlane.allowScheduling }}
+        taints: []
+        {{- end }}
         ignorePreflightErrors:
         - FileContent--proc-sys-net-bridge-bridge-nf-call-iptables
         kubeletExtraArgs:
