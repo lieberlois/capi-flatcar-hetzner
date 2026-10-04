@@ -8,7 +8,7 @@ spec:
     templateRef:
       apiVersion: controlplane.cluster.x-k8s.io/v1beta2
       kind: KubeadmControlPlaneTemplate
-      name: flatcar-control-plane
+      name: flatcar-control-plane-template
     machineInfrastructure:
       templateRef:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -31,7 +31,7 @@ spec:
     templateRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: HetznerClusterTemplate
-      name: flatcar-cluster
+      name: flatcar-cluster-template
   workers:
     machineDeployments:
     - class: hcloud-worker
@@ -39,7 +39,7 @@ spec:
         templateRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
           kind: KubeadmConfigTemplate
-          name: flatcar-worker-config
+          name: flatcar-worker-config-template
       infrastructure:
         templateRef:
           apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -240,7 +240,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HetznerClusterTemplate
 metadata:
-  name: flatcar-cluster
+  name: flatcar-cluster-template
   namespace: default
 spec:
   template:
@@ -281,7 +281,7 @@ spec:
 apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlaneTemplate
 metadata:
-  name: flatcar-control-plane
+  name: flatcar-control-plane-template
   namespace: default
 spec:
   template:
@@ -324,7 +324,7 @@ spec:
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
-  name: flatcar-worker-config
+  name: flatcar-worker-config-template
   namespace: default
 spec:
   template:
