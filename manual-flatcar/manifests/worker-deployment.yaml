@@ -84,7 +84,7 @@ metadata:
   namespace: default
 spec:
   clusterName: hetzner-cluster
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels: null
   template:
